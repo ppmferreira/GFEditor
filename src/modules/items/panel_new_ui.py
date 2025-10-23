@@ -141,6 +141,11 @@ class ItemsPanel(QWidget):
                 for i, (fk, fv) in enumerate(items):
                     cb = QCheckBox(fv)
                     cb.setProperty('flag_key', fk)
+                    try:
+                        # tooltip shows hex value for easier mapping/debug
+                        cb.setToolTip(f"0x{int(fk):X}")
+                    except Exception:
+                        pass
                     # alternate columns
                     if i % 2 == 0:
                         col1.addWidget(cb)
@@ -252,7 +257,8 @@ class ItemsPanel(QWidget):
             elif hasattr(w, 'addItem') and isinstance(w, QComboBox):
                 # find index with userData == int(val)
                 try:
-                    ival = int(val)
+                    # accept decimal or hex (e.g. '0x20') by using base=0
+                    ival = int(val, 0)
                 except Exception:
                     ival = None
                 if ival is not None:
@@ -265,10 +271,16 @@ class ItemsPanel(QWidget):
                 for child in w.findChildren(QCheckBox):
                     fk = child.property('flag_key')
                     try:
-                        mask = int(val)
+                        # accept decimal or hex strings
+                        mask = int(val, 0)
                     except Exception:
                         mask = 0
                     child.setChecked(bool(mask & fk))
+                # also annotate the group with the numeric value for quick inspection
+                try:
+                    w.setToolTip(f"mask: {mask} (0x{int(mask):X})")
+                except Exception:
+                    pass
 
     def _gather_row(self) -> List[str]:
         # produce a list of strings aligned with SCHEMA indices
@@ -289,7 +301,7 @@ class ItemsPanel(QWidget):
                 for child in w.findChildren(QCheckBox):
                     if child.isChecked():
                         fk = child.property('flag_key')
-                        mask |= int(fk)
+                        mask |= int(fk, 0)
                 sval = str(mask)
             else:
                 # fallback

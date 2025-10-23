@@ -1,8 +1,9 @@
+# -*- coding: cp1252 -*-
 from pathlib import Path
 
 # Complete SCHEMA for Item columns (indices 0..92) provided by the user.
 # Types: 'int', 'str', 'trans' (translation key for Name), 'trans_multiline' (Tip),
-# 'enum:<Name>' and 'flags:<Name>' for special handling in UI.
+# 'enum:<n>' and 'flags:<n>' for special handling in UI.
 SCHEMA = [
     (0, 'Id', 'int'),
     (1, 'IconFilename', 'str'),
@@ -27,7 +28,7 @@ SCHEMA = [
     (20, 'RebirthMaxScore', 'int'),
     (21, 'RestrictAlign', 'int'),
     (22, 'RestrictPrestige', 'int'),
-    (23, 'RestrictClass', 'int'),
+    (23, 'RestrictClass', 'flags:RestrictClass'),
     (24, 'ItemQuality', 'enum:ItemQuality'),
     (25, 'ItemGroup', 'int'),
     (26, 'CastingTime', 'int'),
@@ -98,7 +99,6 @@ SCHEMA = [
     (91, 'ExtraData_2', 'str'),
     (92, 'Tip', 'trans_multiline'),
 ]
-
 
 # Enums and flags provided by the user
 ENUMS = {
@@ -281,4 +281,113 @@ OPFLAGSPLUS = {
     'StorageForbidden': 2097152,
     'FamilyStorageForbidden': 4194304,
 }
+
+# RestrictClass explicit mapping (ids provided by user)
+ENUMS['RestrictClass'] = {
+    # Classes Guerreiras
+    1: 'Lutador',
+    2: 'Guerreiro',
+    3: 'Berzerker',
+    4: 'Paladino',
+    17: 'Titan',
+    18: 'Templario',
+    32: 'Cavaleiro da Morte',
+    33: 'Cavaleiro Real',
+    40: 'Destruidor',
+    41: 'Cavaleiro Sagrado',
+
+    # Classes Arqueiras
+    5: 'Caçador',
+    6: 'Arqueiro',
+    7: 'Ranger',
+    8: 'Assassin',
+    19: 'Franco Atirador',
+    20: 'Sicario Sombrio',
+    34: 'Mercenario',
+    35: 'Ninja',
+    42: 'Predador',
+    43: 'Shinobi',
+
+    # Classes Sacerdotes
+    9: 'Acolito',
+    10: 'Sacerdote',
+    11: 'Clerigo',
+    12: 'Sabio',
+    21: 'Profeta',
+    22: 'Mistico',
+    36: 'Mensageiro Divino',
+    37: 'Xamã',
+    44: 'Arcanjo',
+    45: 'Druida',
+
+    # Classes Mágicas
+    13: 'Bruxo',
+    14: 'Mago',
+    15: 'Feiticeiro',
+    16: 'Necromante',
+    23: 'Arquimago',
+    24: 'Demonologo',
+    38: 'Arcano',
+    39: 'Emissario dos Mortos',
+    47: 'Shinigami',
+
+    # Classes Maquinista
+    25: 'Maquinista Aprendiz',
+    26: 'Maquinista',
+    27: 'Agressor',
+    28: 'Demolidor',
+    29: 'Prime',
+    30: 'Optimus',
+    48: 'Megatron',
+    49: 'Galvatron',
+    50: 'Omega',
+    51: 'Titan Celeste',
+
+    # Classes Viajante
+    52: 'Viajante',
+    53: 'Nomade',
+    54: 'Espadachim',
+    55: 'Ilusionista',
+    56: 'Samurai',
+    57: 'Augure',
+    58: 'Ronin',
+    59: 'Oraculo',
+    60: 'Mestre Dimensional',
+    61: 'Cronos',
+}
+
+
+# Helpers to convert between list of bit indices and hex bitmask
+def ids_to_hex(ids):
+    """Convert iterable of bit indices (0..127) to hex string (no leading 0x).
+    Accepts ints. Example: ids_to_hex([61]) -> hex string with bit 61 set.
+    """
+    n = 0
+    for i in ids:
+        if not isinstance(i, int):
+            raise TypeError("ids must be integers")
+        if i < 0 or i >= 128:
+            raise ValueError("bit index out of range (0..127): %r" % i)
+        n |= (1 << i)
+    return format(n, 'x') if n != 0 else "0"
+
+
+def hex_to_ids(hexstr):
+    """Convert hex string to list of set bit indices (ascending)."""
+    if hexstr is None:
+        return []
+    s = hexstr.strip().lower()
+    if s.startswith("0x"):
+        s = s[2:]
+    if s == "" or s == "0":
+        return []
+    n = int(s, 16)
+    ids = []
+    i = 0
+    while n:
+        if n & 1:
+            ids.append(i)
+        n >>= 1
+        i += 1
+    return ids
 
