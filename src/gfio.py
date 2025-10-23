@@ -29,6 +29,7 @@ def read_pipe_file(path: str, encoding: Optional[str] = None, limit: Optional[in
 
 
 def write_pipe_file(path: str, rows: List[List[str]], encoding: str = 'utf-8') -> None:
-    with open(path, 'w', encoding=encoding, newline='') as f:
+    # use errors='replace' to avoid raising on characters not representable in target encoding
+    with open(path, 'w', encoding=encoding, errors='replace', newline='') as f:
         for row in rows:
             f.write('|'.join(row) + '\n')

@@ -2,3 +2,4 @@
 dist/
 Lib/
 __pycache__/
+.run_tests/
