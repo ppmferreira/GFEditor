@@ -21,7 +21,18 @@ def list_entries(lib_path: Path) -> List[str]:
 
 
 def load_rows(path: Path, encoding: str = 'big5', limit: Optional[int] = None) -> List[List[str]]:
-    return _gfio.read_pipe_file(path, encoding=encoding, limit=limit)
+    # determine expected fields from schema (max index + 1)
+    try:
+        from .schema import SCHEMA as _SC
+        expected = max(idx for idx, *_ in _SC) + 1
+    except Exception:
+        expected = None
+    return _gfio.read_pipe_file(path, encoding=encoding, limit=limit, expected_fields=expected)
+
+
+def read_ids(path: Path, encoding: str = 'big5', limit: Optional[int] = None) -> List[str]:
+    """Read just the Id column from the serverdb file for fast population of combo lists."""
+    return _gfio.read_ids(path, encoding=encoding, limit=limit)
 
 
 def save_rows(path: Path, rows: List[List[str]], encoding: str = 'big5') -> None:

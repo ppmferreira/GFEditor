@@ -193,16 +193,17 @@ class ItemsPanel(QWidget):
             return
         self.current_file = filename
         s_path = self.lib_path / 'data' / 'serverdb' / filename
+        # populate id combo quickly using read_ids
         try:
-            self.rows = backend.load_rows(s_path)
+            ids = backend.read_ids(s_path)
         except Exception as e:
-            QMessageBox.warning(self, 'Load error', f'Failed to load {filename}: {e}')
-            self.rows = []
+            QMessageBox.warning(self, 'Load error', f'Failed to read ids from {filename}: {e}')
+            ids = []
         # populate id combo
         self.id_combo.clear()
-        for r in self.rows:
-            if len(r) > 0 and r[0].strip() != '':
-                self.id_combo.addItem(r[0])
+        for idv in ids:
+            if idv and idv.strip():
+                self.id_combo.addItem(idv)
         # clear search
         self.id_search.setText('')
         if self.id_combo.count() > 0:
@@ -221,10 +222,18 @@ class ItemsPanel(QWidget):
     def on_id_changed(self, idstr: str):
         if not idstr:
             return
-        # find row
-        for idx, r in enumerate(self.rows):
+        # load row on demand: find the row with matching id
+        s_path = self.lib_path / 'data' / 'serverdb' / self.current_file
+        try:
+            rows = backend.load_rows(s_path)
+        except Exception as e:
+            QMessageBox.warning(self, 'Load error', f'Failed to load rows from {self.current_file}: {e}')
+            return
+        for idx, r in enumerate(rows):
             if len(r) > 0 and r[0] == idstr:
                 self.current_row_idx = idx
+                # cache the loaded rows for save_file
+                self.rows = rows
                 self._populate_form_from_row(r)
                 return
 
