@@ -76,8 +76,44 @@ class MainWindow(QMainWindow):
             return
         # ask encoding
         encoding = 'big5'  # for now, assume big5 for data files
-        self.rows = _gfio.read_pipe_file(path, encoding=encoding, limit=1000)
+        # try to detect a client/server pair (C_/S_ files under Lib/data/db and Lib/data/serverdb)
+        p = Path(path)
+        self.pair_paths = None
+        try:
+            parts = p.parts
+        except Exception:
+            parts = []
+
+        # default: single file
         self.current_path = path
+
+        # if the selected file looks like a client or server db file, attempt to find its mirror
+        try:
+            name = p.name
+            parent = p.parent
+            # detect common layout: Lib/data/db/C_*.ini or Lib/data/serverdb/S_*.ini (or .txt)
+            str_path = str(p)
+            if 'Lib{}data{}db'.format(Path.sep, Path.sep) in str_path.replace('/', Path.sep):
+                # selected is client file under Lib/data/db
+                if name.startswith('C_') or name.startswith('c_'):
+                    counterpart_name = name.replace('C_', 'S_', 1)
+                    counterpart = Path(str(p).replace(str(Path('Lib') / 'data' / 'db'), str(Path('Lib') / 'data' / 'serverdb'))).with_name(counterpart_name)
+                    if counterpart.exists():
+                        self.pair_paths = (str(p), str(counterpart))
+                        # prefer to load client file rows
+                        self.current_path = str(p)
+                elif name.startswith('S_') or name.startswith('s_'):
+                    counterpart_name = name.replace('S_', 'C_', 1)
+                    counterpart = Path(str(p).replace(str(Path('Lib') / 'data' / 'serverdb'), str(Path('Lib') / 'data' / 'db'))).with_name(counterpart_name)
+                    if counterpart.exists():
+                        self.pair_paths = (str(counterpart), str(p))
+                        self.current_path = str(counterpart)
+        except Exception:
+            self.pair_paths = None
+
+        # load entire file (no 1000-line limit) and assemble logical records
+        # using the expected 93 fields so multiline Tip fields are handled
+        self.rows = _gfio.read_pipe_file(self.current_path, encoding=encoding, expected_fields=93)
         self.populate_table()
 
     def find_lib(self):
@@ -133,10 +169,21 @@ class MainWindow(QMainWindow):
                 item = self.table.item(i, j)
                 row.append(item.text() if item else '')
             rows.append(row)
-        # make backup
+        # make backup for primary (client) path
         Path(self.current_path + '.bak').write_text('backup', encoding='utf-8')
-        _gfio.write_pipe_file(self.current_path, rows, encoding='big5')
-        QMessageBox.information(self, 'Saved', 'File saved (backup created)')
+
+        # if pair_paths present, write both client and server copies
+        try:
+            if getattr(self, 'pair_paths', None):
+                client_path, server_path = self.pair_paths
+                _gfio.write_pipe_file(client_path, rows, encoding='big5')
+                _gfio.write_pipe_file(server_path, rows, encoding='big5')
+                QMessageBox.information(self, 'Saved', f'Saved pair:\nClient: {client_path}\nServer: {server_path}')
+            else:
+                _gfio.write_pipe_file(self.current_path, rows, encoding='big5')
+                QMessageBox.information(self, 'Saved', 'File saved (backup created)')
+        except Exception as exc:
+            QMessageBox.critical(self, 'Save error', f'Failed to save: {exc}')
 
 
 def run_gui():

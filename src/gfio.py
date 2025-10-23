@@ -25,60 +25,43 @@ def read_pipe_file(path: str, encoding: Optional[str] = None, limit: Optional[in
     if encoding is None:
         encoding = detect_encoding(path)
     rows: List[List[str]] = []
-    with open(path, 'r', encoding=encoding, errors='replace', newline='') as f:
-        i = 0
-        cur_buf = None  # accumulated physical lines for current logical record
-        for raw in f:
-            if limit is not None and i >= limit:
-                break
-            line = raw.rstrip('\r\n')
-            # fast path: no multiline expected
-            if expected_fields is None:
+
+    # If expected_fields is provided, read whole file and split logical
+    # records by the pattern '\n' followed by an ID (digits and a pipe).
+    # This reliably groups multiline Tip fields into the same logical record.
+    if expected_fields is None:
+        with open(path, 'r', encoding=encoding, errors='replace', newline='') as f:
+            i = 0
+            for raw in f:
+                if limit is not None and i >= limit:
+                    break
+                line = raw.rstrip('\r\n')
                 rows.append(line.split('|'))
                 i += 1
-                continue
+        return rows
 
-            # Decide whether this physical line starts a new logical record.
-            # Heuristic: if the first field looks like an integer id, treat as new record.
-            first_field = line.split('|', 1)[0]
-            is_new = False
-            try:
-                # allow numeric ids (possibly empty strings will raise)
-                if first_field != '':
-                    _ = int(first_field)
-                    is_new = True
-            except Exception:
-                is_new = False
+    # expected_fields provided: use regex split on newline before an ID
+    import re
+    with open(path, 'r', encoding=encoding, errors='replace', newline='') as f:
+        text = f.read()
 
-            if cur_buf is None:
-                # start new buffer
-                cur_buf = line
-                # if this single line already has expected fields, finalize immediately
-                if len(cur_buf.split('|')) >= expected_fields:
-                    rows.append(cur_buf.split('|'))
-                    cur_buf = None
-                    i += 1
-                continue
-
-            # cur_buf exists: decide if this line is continuation or new record
-            if is_new:
-                # finalize previous
-                rows.append(cur_buf.split('|'))
-                i += 1
-                # start new buffer with this line
-                cur_buf = line
-                if len(cur_buf.split('|')) >= expected_fields:
-                    rows.append(cur_buf.split('|'))
-                    cur_buf = None
-                    i += 1
-            else:
-                # continuation: append with newline and keep accumulating
-                cur_buf += '\n' + line
-
-        # end for
-        if cur_buf is not None and (limit is None or i < limit):
-            rows.append(cur_buf.split('|'))
-            i += 1
+    # Split at newlines that precede a numeric ID + pipe. Keep initial segment.
+    parts = re.split(r'\r?\n(?=\d+\|)', text)
+    expected_len = expected_fields
+    count = 0
+    for part in parts:
+        if limit is not None and count >= limit:
+            break
+        # strip trailing newline characters (if any) then split by pipe
+        record = part.rstrip('\r\n')
+        fields = record.split('|')
+        # normalize to expected length
+        if len(fields) < expected_len:
+            fields += [''] * (expected_len - len(fields))
+        elif len(fields) > expected_len:
+            fields = fields[:expected_len]
+        rows.append(fields)
+        count += 1
     return rows
 
 

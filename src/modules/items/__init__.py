@@ -1,9 +1,15 @@
-from pathlib import Path
-from typing import List
+﻿"""Items package API.
 
-from .panel_new_ui import panel_widget, list_entries
+Expose a minimal ASCII-only API for item data handling.
 
-__all__ = [
-    'panel_widget',
-    'list_entries',
-]
+Public symbols:
+- Item
+- read_items
+- read_items_pair
+- write_items_pair
+"""
+from .model import Item
+from .reader import read_items, read_items_pair
+from .writer import write_items_pair
+
+__all__ = ["Item", "read_items", "read_items_pair", "write_items_pair"]
