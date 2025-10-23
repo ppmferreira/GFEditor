@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 )
 import sys
 from pathlib import Path
-from .gfio import read_pipe_file, write_pipe_file
+import gfio as _gfio
 
 
 class MainWindow(QMainWindow):
@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
             return
         # ask encoding
         encoding = 'big5'  # for now, assume big5 for data files
-        self.rows = read_pipe_file(path, encoding=encoding, limit=1000)
+        self.rows = _gfio.read_pipe_file(path, encoding=encoding, limit=1000)
         self.current_path = path
         self.populate_table()
 
@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
             rows.append(row)
         # make backup
         Path(self.current_path + '.bak').write_text('backup', encoding='utf-8')
-        write_pipe_file(self.current_path, rows, encoding='big5')
+        _gfio.write_pipe_file(self.current_path, rows, encoding='big5')
         QMessageBox.information(self, 'Saved', 'File saved (backup created)')
 
 

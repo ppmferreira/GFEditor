@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 if __name__ == '__main__':
-    # ensure src is on path so package imports work
+    # ensure src is on path so modules in src/ can be imported directly
     sys.path.insert(0, str(Path(__file__).resolve().parent / 'src'))
-    from gfeditor.gui import run_gui
-    run_gui()
+    import gui
+    gui.run_gui()
