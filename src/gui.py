@@ -5,8 +5,9 @@ This provides: open file, show first lines in a table, save (writes back raw pip
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QWidget, QVBoxLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox,
-    QListWidget, QSplitter, QLabel, QTextEdit
+    QListWidget, QSplitter, QLabel, QTextEdit, QScrollArea, QFormLayout, QLineEdit
 )
+from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, QThread, Signal
 import sys
 from pathlib import Path
@@ -396,7 +397,50 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         info = QLabel(f'Rows: {len(rows)} Columns: {len(header)}')
         layout.addWidget(info)
+
+        # small toolbar to switch views: Tabela (CSV) or Editor detalhado
+        toolbar = QHBoxLayout()
+        btn_table = QPushButton('Tabela (CSV)')
+        btn_editor = QPushButton('Editor detalhado')
+        toolbar.addWidget(btn_table)
+        toolbar.addWidget(btn_editor)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
+
+        # by default show the table view
         layout.addWidget(self.table)
+
+        # double-click on table row to open editor for that row
+        self.table.itemDoubleClicked.connect(lambda item: self.show_item_editor(item.row(), header))
+
+        # toolbar actions
+        def show_table_view():
+            # remove any editor widget if present and show table
+            for i in range(layout.count()-1, -1, -1):
+                w = layout.itemAt(i).widget()
+                if w is not None and w is not self.table and w is not info:
+                    try:
+                        layout.removeWidget(w)
+                        w.setParent(None)
+                    except Exception:
+                        pass
+            if self.table.parent() is None:
+                layout.addWidget(self.table)
+
+        def show_editor_view():
+            # open editor for currently selected row (or first row)
+            idx = self.table.currentRow()
+            if idx < 0:
+                idx = 0
+            editor = self.build_item_editor(idx, header)
+            # remove table widget and add editor scroll area
+            if self.table.parent() is not None:
+                layout.removeWidget(self.table)
+                self.table.setParent(None)
+            layout.addWidget(editor)
+
+        btn_table.clicked.connect(show_table_view)
+        btn_editor.clicked.connect(show_editor_view)
         panel.setLayout(layout)
 
         splitter = self._find_splitter()
@@ -433,6 +477,143 @@ class MainWindow(QMainWindow):
         self._current_worker = worker
         QApplication.setOverrideCursor(Qt.WaitCursor)
         worker.start()
+
+    def build_item_editor(self, index: int, header: list) -> QWidget:
+        """Construct a scrollable editor widget for the item at `index` using `header` names."""
+        if not self.rows or index < 0 or index >= len(self.rows):
+            QMessageBox.warning(self, 'No selection', 'No item selected to edit')
+            return QWidget()
+
+        row = self.rows[index]
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QWidget()
+
+        # main horizontal layout: left (icon + basic info + description), right (attributes form)
+        main_layout = QHBoxLayout()
+
+        # Left column
+        left_v = QVBoxLayout()
+        # icon preview
+        icon_label = QLabel()
+        icon_label.setFixedSize(128, 128)
+        icon_label.setStyleSheet('background: #222; border: 1px solid #444;')
+        # try to load icon if available
+        icon_name = row[1] if len(row) > 1 else ''
+        pix = None
+        try:
+            if icon_name:
+                icon_path = Path(self.lib_path) / 'itemicon' / icon_name
+                if icon_path.exists():
+                    pix = QPixmap(str(icon_path))
+        except Exception:
+            pix = None
+        if pix and not pix.isNull():
+            icon_label.setPixmap(pix.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            icon_label.setText(icon_name or 'No Icon')
+            icon_label.setAlignment(Qt.AlignCenter)
+
+        left_v.addWidget(icon_label)
+
+        # Name and ID
+        id_field = QLineEdit(row[0] if len(row) > 0 else '')
+        id_field.setReadOnly(True)
+        name_field = QLineEdit(row[9] if len(row) > 9 else '')
+        left_v.addWidget(QLabel('ID:'))
+        left_v.addWidget(id_field)
+        left_v.addWidget(QLabel('Name:'))
+        left_v.addWidget(name_field)
+
+        # Description (Tip)
+        desc = QTextEdit()
+        desc.setPlainText(row[92] if len(row) > 92 else '')
+        desc.setReadOnly(False)
+        desc.setFixedHeight(140)
+        left_v.addWidget(QLabel('Description:'))
+        left_v.addWidget(desc)
+
+        main_layout.addLayout(left_v)
+
+        # Right column: attributes form
+        right_v = QVBoxLayout()
+        form = QFormLayout()
+
+        # friendly mapping for a subset of fields shown at right
+        friendly = {
+            'RestrictLevel': 'Level',
+            'EnchantId': 'Enchant',
+            'MaxDurability': 'Durability',
+            'MaxHp': 'HP',
+            'MaxMp': 'MP',
+            'Str': 'STR',
+            'Con': 'VIT',
+            'Int': 'INT',
+            'Vol': 'VON',
+            'Dex': 'AGI'
+        }
+
+        widgets = {}
+        # build form fields from header where available
+        for i, col in enumerate(header):
+            if col in friendly:
+                label = friendly[col]
+                val = row[i] if i < len(row) else ''
+                le = QLineEdit(val)
+                form.addRow(label + ':', le)
+                widgets[i] = le
+
+        right_v.addLayout(form)
+
+        # Save button
+        btn_save = QPushButton('Salvar este item')
+
+        def save_item():
+            # update fields back into row: name, tip, and mapped attributes
+            # name is header index 9
+            if len(row) <= 9:
+                while len(row) <= 9:
+                    row.append('')
+            row[9] = name_field.text()
+            if len(row) > 92:
+                row[92] = desc.toPlainText()
+            else:
+                # extend to reach index 92
+                while len(row) <= 92:
+                    row.append('')
+                row[92] = desc.toPlainText()
+            for idx, widget in widgets.items():
+                v = widget.text()
+                while len(row) <= idx:
+                    row.append('')
+                row[idx] = v
+            # refresh table display for this row
+            for col in range(self.table.columnCount()):
+                val = row[col] if col < len(row) else ''
+                self.table.setItem(index, col, QTableWidgetItem(val))
+            QMessageBox.information(self, 'Saved', 'Item updated in table (not yet written to disk)')
+
+        btn_save.clicked.connect(save_item)
+        right_v.addWidget(btn_save)
+
+        main_layout.addLayout(right_v)
+
+        container.setLayout(main_layout)
+        scroll.setWidget(container)
+        return scroll
+
+    def show_item_editor(self, index: int, header: list):
+        """Helper to open the editor in-place replacing the table view for chosen index."""
+        splitter = self._find_splitter()
+        if splitter is None:
+            QMessageBox.warning(self, 'UI error', 'Cannot find layout splitter')
+            return
+        editor = self.build_item_editor(index, header)
+        # insert editor widget into right pane
+        old = splitter.widget(1)
+        splitter.insertWidget(1, editor)
+        if old is not None:
+            old.setParent(None)
 
     def save_file(self):
         if not self.current_path:
