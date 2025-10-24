@@ -109,7 +109,8 @@ def build_professional_editor(parent, rows, header):
     container = QWidget()
     main_layout = QVBoxLayout()
 
-    state = {'rows': rows, 'header': header, 'index': 0}
+    # keep a reference to parent so sub-widgets can access app paths/settings
+    state = {'rows': rows, 'header': header, 'index': 0, 'parent': parent}
 
     # ============= TOP CONTROLS =============
     ctrl_row = QHBoxLayout()
@@ -159,6 +160,10 @@ def build_professional_editor(parent, rows, header):
     tab_advanced = create_tab_advanced(rows, header, state)
     tabs.addTab(tab_advanced, "?? Advanced")
 
+    # TAB 6: RAW / OTHER - generate widgets for any header fields not covered above
+    tab_raw = create_tab_raw(rows, header, state)
+    tabs.addTab(tab_raw, "?? Other / Raw")
+
     main_layout.addWidget(tabs)
 
     # ============= SAVE BUTTONS =============
@@ -188,6 +193,7 @@ def build_professional_editor(parent, rows, header):
         update_tab_flags_restrictions(tab_flags, rows[idx], header, state)
         update_tab_enchant_special(tab_enchant, rows[idx], header, state)
         update_tab_advanced(tab_advanced, rows[idx], header, state)
+        update_tab_raw(tab_raw, rows[idx], header, state)
 
     def save_current(close_after=False, write_disk=False):
         idx = state['index']
@@ -201,6 +207,7 @@ def build_professional_editor(parent, rows, header):
         save_tab_flags_restrictions(tab_flags, r, header)
         save_tab_enchant_special(tab_enchant, r, header)
         save_tab_advanced(tab_advanced, r, header)
+        save_tab_raw(tab_raw, r, header)
 
         # Update parent table
         try:
@@ -283,7 +290,8 @@ def create_tab_basic(rows, header, state):
         'SysPrice': ('Sys Price', QSpinBox()),
         'WeaponEffectId': ('Weapon Effect ID', QSpinBox()),
         'FlyEffectId': ('Fly Effect ID', QSpinBox()),
-        'Tip': ('Description/Tip', QTextEdit()),
+    # 'Tip' is the header column name in files; label it as 'Description' in UI
+    'Tip': ('Description', QTextEdit()),
     }
 
     # Setup combo boxes
@@ -448,16 +456,25 @@ def create_tab_flags_restrictions(rows, header, state):
     tab.widgets_flags = {}
     r = 0
     c = 0
+    # include all flags defined in flags.py
     for flag_name in sorted(item_flags.FLAGS.keys()):
-        if flag_name not in ['OnlyStartBit', 'ReplaceableStartBit', 'Only', 'Replaceable']:
-            cb = QCheckBox(flag_name)
-            tab.widgets_flags[flag_name] = cb
-            flags_layout.addWidget(cb, r, c)
-            c += 1
-            if c >= 3:
-                c = 0
-                r += 1
-    
+        cb = QCheckBox(flag_name)
+        tab.widgets_flags[flag_name] = cb
+        flags_layout.addWidget(cb, r, c)
+        c += 1
+        if c >= 3:
+            c = 0
+            r += 1
+
+    # numeric input to show/edit raw OpFlags value
+    flags_input = QLineEdit()
+    flags_input.setPlaceholderText('Enter integer value or edit checkboxes')
+    flags_input.setFixedWidth(220)
+    flags_layout.addWidget(QLabel('OpFlags Value:'), max(0, r+1), 0, 1, 2)
+    flags_layout.addWidget(flags_input, max(0, r+2), 0, 1, 2)
+
+    # expose numeric field references on tab for later updates
+    tab.flags_input = flags_input
     flags_group.setLayout(flags_layout)
     layout.addWidget(flags_group)
 
@@ -469,17 +486,72 @@ def create_tab_flags_restrictions(rows, header, state):
     r = 0
     c = 0
     for flag_name in sorted(item_flags.FLAGS_PLUS.keys()):
-        if flag_name not in ['ISRideCombine', 'ISChairCombine']:
-            cb = QCheckBox(flag_name)
-            tab.widgets_flags_plus[flag_name] = cb
-            flags_plus_layout.addWidget(cb, r, c)
-            c += 1
-            if c >= 3:
-                c = 0
-                r += 1
+        cb = QCheckBox(flag_name)
+        tab.widgets_flags_plus[flag_name] = cb
+        flags_plus_layout.addWidget(cb, r, c)
+        c += 1
+        if c >= 3:
+            c = 0
+            r += 1
+
+    # numeric input for OpFlagsPlus
+    flags_plus_input = QLineEdit()
+    flags_plus_input.setPlaceholderText('Enter integer value or edit checkboxes')
+    flags_plus_input.setFixedWidth(220)
+    flags_plus_layout.addWidget(QLabel('OpFlagsPlus Value:'), max(0, r+1), 0, 1, 2)
+    flags_plus_layout.addWidget(flags_plus_input, max(0, r+2), 0, 1, 2)
     
+    tab.flags_plus_input = flags_plus_input
     flags_plus_group.setLayout(flags_plus_layout)
     layout.addWidget(flags_plus_group)
+
+    # -- wiring: keep numeric input and checkboxes in sync --
+    def recompute_opflags():
+        try:
+            checked = [name for name, cb in tab.widgets_flags.items() if cb.isChecked()]
+            val = item_flags.encode_flags(checked)
+            tab.flags_input.setText(str(val))
+        except Exception:
+            pass
+
+    def recompute_opflags_plus():
+        try:
+            checked = [name for name, cb in tab.widgets_flags_plus.items() if cb.isChecked()]
+            val = item_flags.encode_flags_plus(checked)
+            tab.flags_plus_input.setText(str(val))
+        except Exception:
+            pass
+
+    # connect checkboxes -> numeric
+    for name, cb in tab.widgets_flags.items():
+        cb.stateChanged.connect(lambda _state, cb=cb: recompute_opflags())
+    for name, cb in tab.widgets_flags_plus.items():
+        cb.stateChanged.connect(lambda _state, cb=cb: recompute_opflags_plus())
+
+    # numeric -> checkboxes
+    def apply_flags_from_input(text):
+        try:
+            v = int(text) if str(text).strip().lstrip('-').isdigit() else 0
+            decoded = item_flags.decode_flags(v)
+            for fname, cb in tab.widgets_flags.items():
+                cb.setChecked(fname in decoded)
+        except Exception:
+            pass
+
+    def apply_flags_plus_from_input(text):
+        try:
+            v = int(text) if str(text).strip().lstrip('-').isdigit() else 0
+            decoded = item_flags.decode_flags_plus(v)
+            for fname, cb in tab.widgets_flags_plus.items():
+                cb.setChecked(fname in decoded)
+        except Exception:
+            pass
+
+    try:
+        tab.flags_input.editingFinished.connect(lambda: apply_flags_from_input(tab.flags_input.text()))
+        tab.flags_plus_input.editingFinished.connect(lambda: apply_flags_plus_from_input(tab.flags_plus_input.text()))
+    except Exception:
+        pass
 
     # Class Restrictions
     class_group = QGroupBox('Class Restrictions')
@@ -539,6 +611,12 @@ def update_tab_flags_restrictions(tab, row, header, state):
         decoded = item_flags.decode_flags(flags_value)
         for flag_name, cb in tab.widgets_flags.items():
             cb.setChecked(flag_name in decoded)
+        # update numeric input if present
+        try:
+            if hasattr(tab, 'flags_input') and tab.flags_input is not None:
+                tab.flags_input.setText(str(flags_value))
+        except Exception:
+            pass
     except:
         pass
 
@@ -549,6 +627,11 @@ def update_tab_flags_restrictions(tab, row, header, state):
         decoded = item_flags.decode_flags_plus(flags_plus_value)
         for flag_name, cb in tab.widgets_flags_plus.items():
             cb.setChecked(flag_name in decoded)
+        try:
+            if hasattr(tab, 'flags_plus_input') and tab.flags_plus_input is not None:
+                tab.flags_plus_input.setText(str(flags_plus_value))
+        except Exception:
+            pass
     except:
         pass
 
@@ -560,6 +643,19 @@ def update_tab_flags_restrictions(tab, row, header, state):
             widget.setValue(int(val) if val.isdigit() else 0)
         except:
             pass
+
+    # Update RestrictClass bitmask into class checkboxes (if present in header)
+    try:
+        idx = header.index('RestrictClass')
+        val = int(row[idx]) if idx < len(row) and str(row[idx]).lstrip('-').isdigit() else 0
+        # classes are placed in the same order as tab.widgets_classes keys
+        class_names = list(tab.widgets_classes.keys())
+        for i, cname in enumerate(class_names):
+            cb = tab.widgets_classes.get(cname)
+            if cb is not None:
+                cb.setChecked(bool(val & (1 << i)))
+    except Exception:
+        pass
 
 
 def save_tab_flags_restrictions(tab, row, header):
@@ -592,6 +688,21 @@ def save_tab_flags_restrictions(tab, row, header):
             row[idx] = str(widget.value())
         except:
             pass
+
+    # Save RestrictClass bitmask from class checkboxes
+    try:
+        idx = header.index('RestrictClass')
+        while len(row) <= idx:
+            row.append('')
+        class_names = list(tab.widgets_classes.keys())
+        mask = 0
+        for i, cname in enumerate(class_names):
+            cb = tab.widgets_classes.get(cname)
+            if cb is not None and cb.isChecked():
+                mask |= (1 << i)
+        row[idx] = str(mask)
+    except Exception:
+        pass
 
 
 # ============= TAB 4: ENCHANT & SPECIAL =============
@@ -752,3 +863,53 @@ def show_search_dialog(rows, on_select):
     dialog.setLayout(layout)
     dialog.resize(600, 400)
     dialog.show()
+
+
+# ============= TAB RAW / OTHER HELPERS =============
+def create_tab_raw(rows, header, state):
+    tab = QWidget()
+    layout = QFormLayout()
+
+    # fields that are already present in other tabs (do not duplicate)
+    known_fields = {
+        'Id', 'Name', 'IconFilename', 'ItemType', 'ItemQuality', 'Target', 'MaxStack', 'SysPrice', 'Tip',
+        'MaxHp', 'MaxMp', 'Str', 'Con', 'Int', 'Vol', 'Dex', 'Attack', 'AttackSpeed', 'RangeAttack',
+        'AvgPhysicoDamage', 'RandPhysicoDamage', 'PhysicoDefence', 'MagicDefence', 'HitRate', 'DodgeRate',
+        'PhysicoCriticalRate', 'PhysicoCriticalDamage', 'MagicCriticalRate', 'MagicCriticalDamage', 'AttackRange',
+        'OpFlags', 'OpFlagsPlus', 'RestrictGender', 'RestrictLevel', 'RestrictMaxLevel', 'RestrictAlign', 'RestrictPrestige',
+        'RestrictClass', 'EnchantType', 'EnchantId', 'EnchantTimeType', 'EnchantDuration', 'ExpertLevel', 'ExpertEnchantId',
+        'TreasureBuffs1', 'TreasureBuffs2', 'TreasureBuffs3', 'TreasureBuffs4', 'DropRate', 'DropIndex',
+        'MaxSocket', 'SocketRate', 'MaxDurability'
+    }
+
+    tab.widgets_raw = {}
+    for col_name in header:
+        if col_name in known_fields:
+            continue
+        widget = QLineEdit()
+        layout.addRow(col_name + ':', widget)
+        tab.widgets_raw[col_name] = widget
+
+    tab.setLayout(layout)
+    return tab
+
+
+def update_tab_raw(tab, row, header, state):
+    for key, widget in tab.widgets_raw.items():
+        try:
+            idx = header.index(key)
+            val = row[idx] if idx < len(row) else ''
+            widget.setText(str(val))
+        except Exception:
+            pass
+
+
+def save_tab_raw(tab, row, header):
+    for key, widget in tab.widgets_raw.items():
+        try:
+            idx = header.index(key)
+            while len(row) <= idx:
+                row.append('')
+            row[idx] = widget.text()
+        except Exception:
+            pass
