@@ -188,6 +188,130 @@ ITEM_TYPE = {
 ITEM_TYPE_REV = {v: k for k, v in ITEM_TYPE.items()}
 
 
+# Class list for RestrictClass bitmask (order matters for bit positions)
+# Canonical classes and their server IDs (provided by user). Order below
+# determines the bit position used by RestrictClass mask in the editor UI.
+CLASSES = [
+    # Guerreiras (Warrior-like)
+    'Lutador','Guerreiro','Berzerker','Paladino','Titan','Templario','Cavaleiro da Morte','Cavaleiro Real','Destruidor','Cavaleiro Sagrado',
+    # Arqueiras (Archer-like)
+    'Cacador','Arqueiro','Ranger','Assassin','Franco Atirador','Sicario Sombrio','Mercenario','Ninja','Predador','Shinobi',
+    # Sacerdotes (Priest-like)
+    'Acolito','Sacerdote','Clerigo','Sabio','Profeta','Mistico','Mensageiro Divino','Xama','Arcanjo','Druida',
+    # Magicas (Magic)
+    'Bruxo','Mago','Feiticeiro','Necromante','Arquimago','Demonologo','Arcano','Emissario dos Mortos','Shinigami',
+    # Maquinista (Machinist)
+    'Maquinista Aprendiz','Maquinista','Agressor','Demolidor','Prime','Optimus','Megatron','Galvatron','Omega','Titan Celeste',
+    # Viajante (Traveler)
+    'Viajante','Nomade','Espadachim','Ilusionista','Samurai','Augure','Ronin','Oraculo','Mestre Dimensional','Cronos'
+]
+
+# Map from class name -> server ID (as provided)
+CLASS_IDS = {
+    # Guerreiras
+    'Lutador': 1,
+    'Guerreiro': 2,
+    'Berzerker': 3,
+    'Paladino': 4,
+    'Titan': 17,
+    'Templario': 18,
+    'Cavaleiro da Morte': 32,
+    'Cavaleiro Real': 33,
+    'Destruidor': 40,
+    'Cavaleiro Sagrado': 41,
+    # Arqueiras
+    'Cacador': 5,
+    'Arqueiro': 6,
+    'Ranger': 7,
+    'Assassin': 8,
+    'Franco Atirador': 19,
+    'Sicario Sombrio': 20,
+    'Mercenario': 34,
+    'Ninja': 35,
+    'Predador': 42,
+    'Shinobi': 43,
+    # Sacerdotes
+    'Acolito': 9,
+    'Sacerdote': 10,
+    'Clerigo': 11,
+    'Sabio': 12,
+    'Profeta': 21,
+    'Mistico': 22,
+    'Mensageiro Divino': 36,
+    'Xama': 37,
+    'Arcanjo': 44,
+    'Druida': 45,
+    # Mágicas
+    'Bruxo': 13,
+    'Mago': 14,
+    'Feiticeiro': 15,
+    'Necromante': 16,
+    'Arquimago': 23,
+    'Demonologo': 24,
+    'Arcano': 38,
+    'Emissario dos Mortos': 39,
+    'Shinigami': 47,
+    # Maquinista
+    'Maquinista Aprendiz': 25,
+    'Maquinista': 26,
+    'Agressor': 27,
+    'Demolidor': 28,
+    'Prime': 29,
+    'Optimus': 30,
+    'Megatron': 48,
+    'Galvatron': 49,
+    'Omega': 50,
+    'Titan Celeste': 51,
+    # Viajante
+    'Viajante': 52,
+    'Nomade': 53,
+    'Espadachim': 54,
+    'Ilusionista': 55,
+    'Samurai': 56,
+    'Augure': 57,
+    'Ronin': 58,
+    'Oraculo': 59,
+    'Mestre Dimensional': 60,
+    'Cronos': 61,
+}
+
+# reverse map id -> name (useful for looking up server-side class names)
+ID_TO_CLASS = {v: k for k, v in CLASS_IDS.items()}
+
+
+def decode_restrict_class(mask: int) -> list:
+    """Decode RestrictClass bitmask into list of class names (according to CLASSES order).
+
+    The mask is interpreted such that bit i corresponds to CLASSES[i].
+    """
+    out = []
+    for i, cname in enumerate(CLASSES):
+        if mask & (1 << i):
+            out.append(cname)
+    return out
+
+
+def encode_restrict_class(class_names: list) -> int:
+    """Encode a list of class names into a RestrictClass bitmask using CLASSES order."""
+    mask = 0
+    for cname in class_names:
+        try:
+            idx = CLASSES.index(cname)
+            mask |= (1 << idx)
+        except ValueError:
+            # ignore unknown class names
+            pass
+    return mask
+
+
+def get_class_id(name: str) -> int:
+    return CLASS_IDS.get(name)
+
+
+def get_class_name(idv: int) -> str:
+    return ID_TO_CLASS.get(idv)
+
+
 def decode_flags(value: int) -> list:
     """Decode integer flags into list of flag names."""
     flags = []

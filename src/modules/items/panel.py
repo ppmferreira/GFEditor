@@ -4,10 +4,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QScrollArea,
     QLineEdit, QTextEdit, QFormLayout, QGroupBox, QGridLayout, QCheckBox,
     QTableWidgetItem, QComboBox, QMessageBox, QSpinBox, QTabWidget,
-    QDoubleSpinBox, QTableWidget, QHeaderView, QAbstractItemView
+    QDoubleSpinBox, QTableWidget, QHeaderView, QAbstractItemView, QDialog, QFileDialog
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QImage
 from pathlib import Path
 import gfio
 from . import flags as item_flags
@@ -107,7 +107,20 @@ def panel_widget(parent):
 def build_professional_editor(parent, rows, header):
     """Build a professional multi-tab item editor."""
     container = QWidget()
+    # name the widget so the stylesheet targets only this editor panel
+    container.setObjectName('item_panel')
     main_layout = QVBoxLayout()
+    # local stylesheet to improve the panel appearance (dark, high-contrast)
+    container.setStyleSheet(r"""
+    QWidget#item_panel { background-color: #0f1113; color: #e6eef6; }
+    QTabWidget::pane { border: 1px solid #2b2f33; }
+    QTabBar::tab { background: #15181a; padding: 6px; margin: 1px; border-radius: 4px; }
+    QTabBar::tab:selected { background: #1e90ff; color: #ffffff; }
+    QPushButton { background: #173043; border: 1px solid #2b6a88; padding: 6px 10px; border-radius: 6px; color: #dceffb; }
+    QPushButton:hover { background: #1e4960; }
+    QLineEdit, QTextEdit, QSpinBox, QComboBox { background: #0f1417; color: #e6eef6; border: 1px solid #2b2f33; }
+    QLabel { color: #b9d0de; }
+    """)
 
     # keep a reference to parent so sub-widgets can access app paths/settings
     state = {'rows': rows, 'header': header, 'index': 0, 'parent': parent}
@@ -127,13 +140,15 @@ def build_professional_editor(parent, rows, header):
 
     btn_prev = QPushButton('< Prev')
     btn_next = QPushButton('Next >')
-    btn_search = QPushButton('?? Search')
+    btn_search = QPushButton('Search Item')
+    btn_csv = QPushButton('View CSV')
     
     ctrl_row.addWidget(QLabel('Item:'))
     ctrl_row.addWidget(btn_prev)
     ctrl_row.addWidget(selector)
     ctrl_row.addWidget(btn_next)
     ctrl_row.addWidget(btn_search)
+    ctrl_row.addWidget(btn_csv)
     ctrl_row.addStretch()
     main_layout.addLayout(ctrl_row)
 
@@ -142,36 +157,36 @@ def build_professional_editor(parent, rows, header):
 
     # TAB 1: BASIC INFO
     tab_basic = create_tab_basic(rows, header, state)
-    tabs.addTab(tab_basic, "?? Basic Info")
+    tabs.addTab(tab_basic, "Basic Info")
 
     # TAB 2: PARAMETERS
     tab_params = create_tab_parameters(rows, header, state)
-    tabs.addTab(tab_params, "?? Parameters")
+    tabs.addTab(tab_params, "Parameters")
 
     # TAB 3: FLAGS & RESTRICTIONS
     tab_flags = create_tab_flags_restrictions(rows, header, state)
-    tabs.addTab(tab_flags, "?? Flags & Restrictions")
+    tabs.addTab(tab_flags, "Flags & Restrictions")
 
     # TAB 4: ENCHANT & SPECIAL
     tab_enchant = create_tab_enchant_special(rows, header, state)
-    tabs.addTab(tab_enchant, "? Enchant & Special")
+    tabs.addTab(tab_enchant, "Enchant & Special")
 
     # TAB 5: ADVANCED
     tab_advanced = create_tab_advanced(rows, header, state)
-    tabs.addTab(tab_advanced, "?? Advanced")
+    tabs.addTab(tab_advanced, "Advanced")
 
     # TAB 6: RAW / OTHER - generate widgets for any header fields not covered above
     tab_raw = create_tab_raw(rows, header, state)
-    tabs.addTab(tab_raw, "?? Other / Raw")
+    tabs.addTab(tab_raw, "Other / Raw")
 
     main_layout.addWidget(tabs)
 
     # ============= SAVE BUTTONS =============
     btn_row = QHBoxLayout()
-    btn_save = QPushButton('?? Save')
-    btn_save_close = QPushButton('? Save and Close')
-    btn_save_disk = QPushButton('?? Save to Disk')
-    btn_compare = QPushButton('?? Compare')
+    btn_save = QPushButton('Save')
+    btn_save_close = QPushButton('Save and Close')
+    btn_save_disk = QPushButton('Save to Disk')
+    btn_compare = QPushButton('Compare')
     
     btn_row.addWidget(btn_save)
     btn_row.addWidget(btn_save_close)
@@ -243,6 +258,44 @@ def build_professional_editor(parent, rows, header):
     btn_save_disk.clicked.connect(lambda: save_current(True, True))
     btn_search.clicked.connect(lambda: show_search_dialog(rows, load_index))
     btn_compare.clicked.connect(lambda: QMessageBox.info(parent, 'Compare', 'Compare feature coming soon!'))
+    # CSV viewer: show all rows as CSV in a dialog
+    def show_csv():
+        try:
+            # prepare table data
+            tbl = QTableWidget()
+            tbl.setColumnCount(len(header))
+            tbl.setHorizontalHeaderLabels(list(header))
+            tbl.setRowCount(len(rows))
+            for ri, r in enumerate(rows):
+                for ci in range(len(header)):
+                    val = r[ci] if ci < len(r) else ''
+                    tbl.setItem(ri, ci, QTableWidgetItem(str(val)))
+            tbl.setAlternatingRowColors(True)
+            # size columns to contents so headers and cells are visible; allow horizontal scroll
+            tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        except Exception as exc:
+            QMessageBox.warning(parent, 'CSV error', f'Failed to build table: {exc}')
+            return
+
+        # show a modal dialog that contains only the table (and a Close button)
+        dlg = QDialog(parent)
+        dlg.setWindowTitle('CSV Table View')
+        dlg.setMinimumSize(1000, 700)
+        v = QVBoxLayout()
+        v.addWidget(tbl)
+
+        btn_close = QPushButton('Close')
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(btn_close)
+        v.addLayout(btn_row)
+
+        dlg.setLayout(v)
+
+        btn_close.clicked.connect(dlg.accept)
+        dlg.exec()
+
+    btn_csv.clicked.connect(show_csv)
 
     try:
         table = getattr(parent, 'table', None)
@@ -349,12 +402,92 @@ def update_tab_basic(tab, row, header, state):
         # Update icon preview
         if key == 'IconFilename':
             try:
-                icon_name = row[1] if len(row) > 1 else ''
-                icon_path = Path(getattr(state.get('parent'), 'lib_path', Path.cwd() / 'Assets')) / 'itemicon' / icon_name
-                if icon_path.exists():
-                    pix = QPixmap(str(icon_path))
-                    if pix and not pix.isNull():
-                        tab.icon_label.setPixmap(pix.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                # prefer the value in the widget; fallback to header lookup
+                icon_name = ''
+                try:
+                    if isinstance(widget, QLineEdit):
+                        icon_name = widget.text()
+                except Exception:
+                    pass
+                if not icon_name:
+                    try:
+                        idx_icon = header.index('IconFilename')
+                        icon_name = row[idx_icon] if idx_icon < len(row) else ''
+                    except Exception:
+                        icon_name = ''
+
+                lib_base = Path(getattr(state.get('parent'), 'lib_path', Path.cwd() / 'Assets'))
+                icon_dir = lib_base / 'itemicon'
+                icon_path = None
+
+                # resolve icon path: respect provided filename, try common extensions and case variants
+                if icon_name:
+                    tentative = icon_dir / icon_name
+                    if tentative.exists():
+                        icon_path = tentative
+                    else:
+                        # if icon_name already has an extension, try common case variants
+                        suffix = Path(icon_name).suffix
+                        if suffix:
+                            # try lowercase/uppercase replacement
+                            for ext in (suffix.lower(), suffix.upper()):
+                                p2 = icon_dir / (Path(icon_name).stem + ext)
+                                if p2.exists():
+                                    icon_path = p2
+                                    break
+                        # try adding common extensions if none matched
+                        if icon_path is None:
+                            for ext in ('.dds', '.DDS', '.png', '.bmp', '.jpg', '.jpeg', '.gif'):
+                                p2 = icon_dir / (icon_name + ext) if not Path(icon_name).suffix else icon_dir / (Path(icon_name).stem + ext)
+                                if p2.exists():
+                                    icon_path = p2
+                                    break
+
+                # if we found a candidate file, try to load it; prefer QPixmap, but use Pillow for DDS or other unsupported formats
+                if icon_path and icon_path.exists():
+                    loaded = False
+                    try:
+                        pix = QPixmap(str(icon_path))
+                        if not pix.isNull():
+                            tab.icon_label.setPixmap(pix.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                            tab.icon_label.setToolTip(str(icon_path))
+                            loaded = True
+                    except Exception:
+                        loaded = False
+
+                    if not loaded:
+                        # Try Pillow as a robust fallback (supports DDS with plugin)
+                        try:
+                            from PIL import Image
+                            im = Image.open(str(icon_path))
+                            im = im.convert('RGBA')
+                            w, h = im.size
+                            # raw bytes in RGBA order
+                            data = im.tobytes('raw', 'RGBA')
+                            # try preferred Qt formats; fall back safely
+                            try:
+                                qimg = QImage(data, w, h, QImage.Format_RGBA8888)
+                            except Exception:
+                                try:
+                                    qimg = QImage(data, w, h, QImage.Format_RGBA8888_Premultiplied)
+                                except Exception:
+                                    # last resort: use ARGB32 (may require byte order adjustments depending on platform)
+                                    qimg = QImage(data, w, h, QImage.Format_ARGB32)
+                            pix2 = QPixmap.fromImage(qimg)
+                            if not pix2.isNull():
+                                tab.icon_label.setPixmap(pix2.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                                tab.icon_label.setToolTip(str(icon_path))
+                                loaded = True
+                        except Exception:
+                            loaded = False
+
+                    if not loaded:
+                        # cannot load — clear preview and hint to user about Pillow requirement
+                        tab.icon_label.setPixmap(QPixmap())
+                        tab.icon_label.setToolTip('Ícone não encontrado ou formato não suportado. Para DDS instale Pillow + plugin DDS (ex: pillow-dds).')
+                else:
+                    # clear pixmap if not found or no name provided
+                    tab.icon_label.setPixmap(QPixmap())
             except:
                 pass
 
@@ -553,18 +686,14 @@ def create_tab_flags_restrictions(rows, header, state):
     except Exception:
         pass
 
-    # Class Restrictions
-    class_group = QGroupBox('Class Restrictions')
+    # Class Restrictions (use canonical class list from flags module)
+    class_group = QGroupBox('RestrictClass')
     class_layout = QGridLayout()
-    
-    classes = ['Novice','Fighter','Warrior','Berserker','Warlord','Templar','Paladin',
-               'Ranger','Archer','Sniper','Assassin','Hunter','Sharpshooter','Blademaster',
-               'Priest','Cleric','Sage','Prophet','Druid','Shaman','Mage','Wizard','Necromancer']
-    
+
     tab.widgets_classes = {}
     r = 0
     c = 0
-    for class_name in classes:
+    for class_name in item_flags.CLASSES:
         cb = QCheckBox(class_name)
         tab.widgets_classes[class_name] = cb
         class_layout.addWidget(cb, r, c)
@@ -572,9 +701,54 @@ def create_tab_flags_restrictions(rows, header, state):
         if c >= 4:
             c = 0
             r += 1
-    
+
+    # after listing class checkboxes, add the numeric RestrictClass field inside the same group
+    # compute rows used (r currently points to next row)
+    class_layout.addWidget(QLabel('RestrictClass Value:'), max(0, r+1), 0, 1, 2)
+    restrict_input = QLineEdit()
+    restrict_input.setPlaceholderText('0x... / dec')
+    restrict_input.setFixedWidth(220)
+    class_layout.addWidget(restrict_input, max(0, r+2), 0, 1, 2)
+    tab.restrict_input = restrict_input
+
     class_group.setLayout(class_layout)
     layout.addWidget(class_group)
+
+    # helper to recompute RestrictClass mask from checkboxes
+    def recompute_restrictclass():
+        try:
+            checked = [name for name, cb in tab.widgets_classes.items() if cb.isChecked()]
+            val = item_flags.encode_restrict_class(checked)
+            tab.restrict_input.setText(f"0x{val:X} / {val}")
+        except Exception:
+            pass
+
+    # apply numeric input value to checkboxes (accept hex 0x.. or decimal)
+    def apply_restrict_from_input(text):
+        try:
+            t = str(text).strip()
+            if t.lower().startswith('0x'):
+                v = int(t, 16)
+            elif '/' in t:
+                # format like '0x... / dec'
+                parts = t.split('/')
+                v = int(parts[-1].strip())
+            else:
+                v = int(t) if t.lstrip('-').isdigit() else 0
+            decoded = item_flags.decode_restrict_class(v)
+            for cname, cb in tab.widgets_classes.items():
+                cb.setChecked(cname in decoded)
+        except Exception:
+            pass
+
+    # connect existing class checkboxes to recompute when changed
+    for cname, cb in tab.widgets_classes.items():
+        cb.stateChanged.connect(lambda _s, cb=cb: recompute_restrictclass())
+
+    try:
+        tab.restrict_input.editingFinished.connect(lambda: apply_restrict_from_input(tab.restrict_input.text()))
+    except Exception:
+        pass
 
     # Other restrictions
     other_group = QGroupBox('Other Restrictions')
@@ -648,12 +822,15 @@ def update_tab_flags_restrictions(tab, row, header, state):
     try:
         idx = header.index('RestrictClass')
         val = int(row[idx]) if idx < len(row) and str(row[idx]).lstrip('-').isdigit() else 0
-        # classes are placed in the same order as tab.widgets_classes keys
-        class_names = list(tab.widgets_classes.keys())
-        for i, cname in enumerate(class_names):
-            cb = tab.widgets_classes.get(cname)
-            if cb is not None:
-                cb.setChecked(bool(val & (1 << i)))
+        decoded = item_flags.decode_restrict_class(val)
+        for cname, cb in tab.widgets_classes.items():
+            cb.setChecked(cname in decoded)
+        # update numeric input if present
+        try:
+            if hasattr(tab, 'restrict_input') and tab.restrict_input is not None:
+                tab.restrict_input.setText(f"0x{val:X} / {val}")
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -694,12 +871,8 @@ def save_tab_flags_restrictions(tab, row, header):
         idx = header.index('RestrictClass')
         while len(row) <= idx:
             row.append('')
-        class_names = list(tab.widgets_classes.keys())
-        mask = 0
-        for i, cname in enumerate(class_names):
-            cb = tab.widgets_classes.get(cname)
-            if cb is not None and cb.isChecked():
-                mask |= (1 << i)
+        checked = [name for name, cb in tab.widgets_classes.items() if cb.isChecked()]
+        mask = item_flags.encode_restrict_class(checked)
         row[idx] = str(mask)
     except Exception:
         pass
