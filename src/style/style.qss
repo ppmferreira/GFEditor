@@ -1,45 +1,140 @@
-/* GF Editor basic stylesheet */
+/* Modern SaaS-like stylesheet for GFEditor */
 
+/* Base */
 QWidget {
-    background: #1e1e2e;
-    color: #e6e6e6;
-    font-family: Segoe UI, Arial, sans-serif;
+    background: #f6f9fc;
+    color: #0f1720;
+    font-family: 'Segoe UI', 'Inter', Arial, sans-serif;
     font-size: 11pt;
 }
 
-QListWidget {
-    background: #23232f;
-    border: 1px solid #2e2e3c;
+QMainWindow {
+    background: #f6f9fc;
 }
 
+/* Panels and lists */
+QListWidget, QListView {
+    background: #ffffff;
+    border: 1px solid #e6eef6;
+    padding: 6px;
+    border-radius: 8px;
+}
+
+/* Table */
 QTableWidget {
-    background: #1b1b24;
-    gridline-color: #2f2f3a;
+    background: #ffffff;
+    alternate-background-color: #f8fbfd;
+    gridline-color: #eef3f6;
+    selection-background-color: #1aa39c;
+    selection-color: #ffffff;
+    border: 1px solid #e6eef6;
+    border-radius: 6px;
+}
+
+QTableWidget QTableCornerButton::section {
+    background: transparent;
 }
 
 QHeaderView::section {
-    background: #2b2b38;
-    color: #ffffff;
-    padding: 4px;
-    border: 1px solid #3a3a47;
+    background: #f0f5f8;
+    color: #072029;
+    padding: 6px 8px;
+    border: none;
+    border-bottom: 1px solid #e6eef6;
+    font-weight: 600;
 }
 
+QTableWidget::item {
+    padding: 6px 8px;
+}
+
+QTableWidget::item:selected {
+    background: #1aa39c;
+    color: #ffffff;
+}
+
+/* Buttons */
 QPushButton {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3a3a47, stop:1 #2b2b38);
-    border: 1px solid #4a4a58;
-    padding: 4px 8px;
-    border-radius: 4px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #17b3ad, stop:1 #0f9a91);
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-weight: 600;
 }
 
 QPushButton:hover {
-    background: #4a4a58;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #19c6bf, stop:1 #119f96);
 }
 
-/* Specific names */
-#itemsLeftPanel {
-    background: #252533;
+QPushButton:disabled {
+    background: #dbe8e6;
+    color: #9aaeb0;
 }
 
-#itemsRightPanel {
+/* Inputs */
+QLineEdit, QTextEdit, QPlainTextEdit, QComboBox {
+    background: white;
+    border: 1px solid #e6eef6;
+    padding: 6px 8px;
+    border-radius: 6px;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid #1aa39c;
+    box-shadow: 0 0 0 3px rgba(26,163,156,0.06);
+}
+
+QTextEdit {
+    background: #ffffff;
+}
+
+/* Form labels */
+QLabel {
+    color: #072029;
+}
+
+/* Scroll area */
+QScrollArea {
     background: transparent;
 }
+
+/* Card-like panels */
+QWidget#card, QWidget[role="card"] {
+    background: #ffffff;
+    border: 1px solid #e6eef6;
+    border-radius: 10px;
+    padding: 12px;
+}
+
+/* Small helpers */
+QToolButton {
+    background: transparent;
+    border: none;
+}
+
+/* Make selection in list more subtle */
+QListWidget::item:selected {
+    background: #e6f7f5;
+    color: #072029;
+    border-radius: 6px;
+}
+
+/* Status bar / labels */
+QStatusBar {
+    background: #ffffff;
+    border-top: 1px solid #e6eef6;
+}
+
+/* Ensure dialogs look consistent */
+QDialog {
+    background: #f6f9fc;
+}
+
+/* Small utilities */
+QHeaderView::section:horizontal { padding-left: 8px; }
+
+/* accent for links */
+QLabel.link { color: #0f9a91; text-decoration: underline; }
+
+/* End of modern SaaS theme */

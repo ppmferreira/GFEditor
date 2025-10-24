@@ -1,5 +1,5 @@
 .venv/
 dist/
-Lib/
+Assets/
 __pycache__/
 .run_tests/
