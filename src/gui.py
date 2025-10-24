@@ -5,10 +5,12 @@ This provides: open file, show first lines in a table, save (writes back raw pip
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QWidget, QVBoxLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox,
-    QListWidget, QSplitter
+    QListWidget, QSplitter, QLabel, QTextEdit
 )
+from PySide6.QtCore import Qt
 import sys
 from pathlib import Path
+from typing import Optional
 import gfio as _gfio
 
 
@@ -16,10 +18,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('GF Editor - Prototype')
+
         # detect Lib folder
         self.lib_path = self.find_lib()
 
-        # modules list and main area: discover subpackages in src/modules
+        # discover available modules in src/modules
         self.modules = []
         try:
             modules_dir = Path(__file__).parent / 'modules'
@@ -30,45 +33,117 @@ class MainWindow(QMainWindow):
                         display = name.capitalize()
                         self.modules.append((display, f'modules.{name}'))
         except Exception:
-            # fallback to default list if discovery fails
+            # fallback
             self.modules = [
                 ('Items', 'modules.items'),
                 ('Monsters', 'modules.monsters'),
                 ('NPCs', 'modules.npcs'),
                 ('Shops', 'modules.shops'),
             ]
-        # sidebar with modules
+
+        # module list widget
         self.module_list = QListWidget()
         for name, _ in self.modules:
             self.module_list.addItem(name)
         self.module_list.currentRowChanged.connect(self.on_module_changed)
 
-        # main table and buttons
+        # left panel: Home button above module list (user requested)
+        left_panel = QWidget()
+        left_layout = QVBoxLayout()
+        home_btn = QPushButton('Home')
+        home_btn.clicked.connect(self.show_intro)
+        left_layout.addWidget(home_btn)
+        left_layout.addWidget(self.module_list)
+        left_layout.addStretch()
+        left_panel.setLayout(left_layout)
+
+        # main table (used when a file is opened)
         self.table = QTableWidget()
-        open_btn = QPushButton('Open')
-        save_btn = QPushButton('Save')
-        open_btn.clicked.connect(self.open_file)
-        save_btn.clicked.connect(self.save_file)
 
-        btns = QHBoxLayout()
-        btns.addWidget(open_btn)
-        btns.addWidget(save_btn)
+        # create intro panel shown initially on the right
+        self.intro_panel = self.create_intro_panel()
 
-        right_layout = QVBoxLayout()
-        right_layout.addLayout(btns)
-        right_layout.addWidget(self.table)
-        right_container = QWidget()
-        right_container.setLayout(right_layout)
-
+        # splitter: left panel (with Home+modules) and right content (intro/table)
         splitter = QSplitter()
-        splitter.addWidget(self.module_list)
-        splitter.addWidget(right_container)
+        splitter.addWidget(left_panel)
+        splitter.addWidget(self.intro_panel)
         splitter.setSizes([150, 800])
 
-        self.setCentralWidget(splitter)
+        # central layout: just the splitter (buttons removed)
+        central = QWidget()
+        central_layout = QVBoxLayout()
+        central_layout.addWidget(splitter)
+        central.setLayout(central_layout)
+        self.setCentralWidget(central)
 
         self.current_path = None
         self.rows = []
+        self.pair_paths = None
+
+    def create_intro_panel(self) -> QWidget:
+        w = QWidget()
+        layout = QVBoxLayout()
+
+        title = QLabel('<h2>Bem-vindo ao GF Editor - Developed By Fuleco.</h2>')
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        desc = QTextEdit()
+        desc.setReadOnly(True)
+        desc.setPlainText(
+            'Bem-vindo ao GF Editor - Developed By Fuleco.\n\n'
+            'Este editor foi desenvolvido para editar arquivos do Grand Fantasia (C_/S_).\n'
+            'Funcionalidades principais:\n'
+            '- Suporte a arquivos espelhados cliente/servidor (C_ <-> S_)\n'
+            "- Preserva campos 'Tip' com quebras de linha\n"
+            '- Leitura com fallback de encoding (BIG5, UTF-8, latin-1)\n\n'
+            'Use o painel a esquerda para escolher um modulo e clique em "Open" para carregar arquivos.'
+        )
+        layout.addWidget(desc)
+
+        btn_open = QPushButton('Open')
+        btn_open.clicked.connect(self.open_file)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(btn_open)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        layout.addStretch()
+        w.setLayout(layout)
+        return w
+
+    def _find_splitter(self) -> Optional[QSplitter]:
+        central = self.centralWidget()
+        if central is None:
+            return None
+        layout = central.layout()
+        if layout is None:
+            return None
+        for i in range(layout.count()):
+            w = layout.itemAt(i).widget()
+            if isinstance(w, QSplitter):
+                return w
+        return None
+
+    def show_intro(self):
+        """Restore the intro panel on the right side of the splitter."""
+        splitter = self._find_splitter()
+        if splitter is None:
+            return
+        # if intro is already visible at slot 1, do nothing (keep home visible)
+        try:
+            current = splitter.widget(1)
+        except Exception:
+            current = None
+        if current is self.intro_panel:
+            return
+
+        old = current
+        # insert intro panel at index 1 and remove old widget
+        splitter.insertWidget(1, self.intro_panel)
+        if old is not None and old is not self.intro_panel:
+            old.setParent(None)
 
     def open_file(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Open file', str(Path.cwd() / 'Lib'))
@@ -111,9 +186,54 @@ class MainWindow(QMainWindow):
         except Exception:
             self.pair_paths = None
 
-        # load entire file (no 1000-line limit) and assemble logical records
-        # using the expected 93 fields so multiline Tip fields are handled
-        self.rows = _gfio.read_pipe_file(self.current_path, encoding=encoding, expected_fields=93)
+        # If we detected a client/server pair, read both and compare for divergences.
+        # We still load the primary (client) file into the table, but show a warning
+        # if the server file differs so the user can decide what to do.
+        self.rows = []
+        if getattr(self, 'pair_paths', None):
+            client_path, server_path = self.pair_paths
+            try:
+                client_rows = _gfio.read_pipe_file(client_path, encoding=encoding, expected_fields=93)
+            except Exception as exc:
+                QMessageBox.critical(self, 'Read error', f'Failed to read client file: {exc}')
+                return
+            try:
+                server_rows = _gfio.read_pipe_file(server_path, encoding=encoding, expected_fields=93)
+            except Exception as exc:
+                # still load client but inform about server read failure
+                self.rows = client_rows
+                QMessageBox.warning(self, 'Server read error', f'Failed to read server mirror: {exc}')
+                self.populate_table()
+                return
+
+            # compare lengths
+            if len(client_rows) != len(server_rows):
+                QMessageBox.warning(self, 'Client/Server mismatch',
+                                    f'Client and Server have different number of records: {len(client_rows)} vs {len(server_rows)}')
+            else:
+                # look for first differing row
+                diff_index = None
+                for i, (a, b) in enumerate(zip(client_rows, server_rows)):
+                    if a != b:
+                        diff_index = i
+                        break
+                if diff_index is not None:
+                    # create a short preview of the differing row (first 6 cols)
+                    a = client_rows[diff_index]
+                    b = server_rows[diff_index]
+                    a_preview = '|'.join(a[:6])
+                    b_preview = '|'.join(b[:6])
+                    QMessageBox.warning(self, 'Client/Server mismatch',
+                                        f'Files differ at row {diff_index+1} (1-based).\nClient preview: {a_preview}\nServer preview: {b_preview}')
+
+            # load client rows into table for editing
+            self.rows = client_rows
+        else:
+            try:
+                self.rows = _gfio.read_pipe_file(self.current_path, encoding=encoding, expected_fields=93)
+            except Exception as exc:
+                QMessageBox.critical(self, 'Read error', f'Failed to read file: {exc}')
+                return
         self.populate_table()
 
     def find_lib(self):
@@ -136,14 +256,32 @@ class MainWindow(QMainWindow):
         except Exception:
             QMessageBox.warning(self, 'Module load error', f'Failed to load {module_path}')
             return
-        # remove right widget and replace with module panel
-        panel = mod.panel_widget(self)
+
+        # If module doesn't expose panel_widget, show a friendly placeholder instead of crashing
+        if not hasattr(mod, 'panel_widget'):
+            placeholder = QWidget()
+            layout = QVBoxLayout()
+            label = QLabel(f'Module "{module_path}" has no UI panel implemented yet.')
+            layout.addWidget(label)
+            open_btn = QPushButton('Open files...')
+            open_btn.clicked.connect(self.open_file)
+            layout.addWidget(open_btn)
+            layout.addStretch()
+            placeholder.setLayout(layout)
+            panel = placeholder
+        else:
+            # remove right widget and replace with module panel
+            panel = mod.panel_widget(self)
         # assume right widget is index 1 in splitter
-        splitter = self.centralWidget()
+        splitter = self._find_splitter()
+        if splitter is None:
+            QMessageBox.warning(self, 'UI error', 'Cannot find layout splitter')
+            return
         # replace widget at index 1
         old = splitter.widget(1)
         splitter.insertWidget(1, panel)
-        old.setParent(None)
+        if old is not None:
+            old.setParent(None)
 
     def populate_table(self):
         if not self.rows:
