@@ -257,21 +257,39 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, 'Module load error', f'Failed to load {module_path}')
             return
 
-        # If module doesn't expose panel_widget, show a friendly placeholder instead of crashing
-        if not hasattr(mod, 'panel_widget'):
-            placeholder = QWidget()
+        # Special-case: modules.items should show two quick actions (Edit Item / Edit ItemMall)
+        if module_path == 'modules.items':
+            panel = QWidget()
             layout = QVBoxLayout()
-            label = QLabel(f'Module "{module_path}" has no UI panel implemented yet.')
-            layout.addWidget(label)
-            open_btn = QPushButton('Open files...')
-            open_btn.clicked.connect(self.open_file)
-            layout.addWidget(open_btn)
+            title = QLabel('<b>Items</b>')
+            layout.addWidget(title)
+
+            btn_item = QPushButton('Editar Item')
+            btn_item.clicked.connect(self._handle_edit_item)
+            layout.addWidget(btn_item)
+
+            btn_itemmall = QPushButton('Editar ItemMall')
+            btn_itemmall.clicked.connect(self._handle_edit_itemmall)
+            layout.addWidget(btn_itemmall)
+
             layout.addStretch()
-            placeholder.setLayout(layout)
-            panel = placeholder
+            panel.setLayout(layout)
         else:
-            # remove right widget and replace with module panel
-            panel = mod.panel_widget(self)
+            # If module doesn't expose panel_widget, show a friendly placeholder instead of crashing
+            if not hasattr(mod, 'panel_widget'):
+                placeholder = QWidget()
+                layout = QVBoxLayout()
+                label = QLabel(f'Module "{module_path}" has no UI panel implemented yet.')
+                layout.addWidget(label)
+                open_btn = QPushButton('Open files...')
+                open_btn.clicked.connect(self.open_file)
+                layout.addWidget(open_btn)
+                layout.addStretch()
+                placeholder.setLayout(layout)
+                panel = placeholder
+            else:
+                # remove right widget and replace with module panel
+                panel = mod.panel_widget(self)
         # assume right widget is index 1 in splitter
         splitter = self._find_splitter()
         if splitter is None:
@@ -294,6 +312,102 @@ class MainWindow(QMainWindow):
             for j in range(max_cols):
                 val = row[j] if j < len(row) else ''
                 self.table.setItem(i, j, QTableWidgetItem(val))
+
+    def _find_client_server_pair(self, base: str):
+        """Try to locate client/server file paths for a given base name (e.g. 'C_Item' or 'C_ItemMall').
+
+        Returns (client_path, server_path) or (None, None) if not found.
+        """
+        db_dir = Path(self.lib_path) / 'data' / 'db'
+        server_dir = Path(self.lib_path) / 'data' / 'serverdb'
+        # look for client file starting with base
+        client_candidates = list(db_dir.glob(f"{base}*.ini")) + list(db_dir.glob(f"{base}*.txt"))
+        if not client_candidates:
+            # try without prefix (fallback)
+            client_candidates = list(db_dir.glob(f"{base}*") )
+        if not client_candidates:
+            return None, None
+        client_path = str(client_candidates[0])
+        # try to build server path by replacing db dir with serverdir and C_ -> S_
+        name = Path(client_path).name
+        if name.startswith('C_'):
+            server_name = name.replace('C_', 'S_', 1)
+        else:
+            server_name = name
+        server_path = str((server_dir / server_name))
+        if not Path(server_path).exists():
+            # try to find any S_ variant
+            server_candidates = list(server_dir.glob(f"S_{name[2:]}*.ini")) + list(server_dir.glob(f"S_{name[2:]}*.txt"))
+            if server_candidates:
+                server_path = str(server_candidates[0])
+            else:
+                server_path = None
+        return client_path, server_path
+
+    def _show_rows_in_table_panel(self, header, rows):
+        """Replace right pane with a panel containing the table and load rows."""
+        # set rows and populate table then insert table into right pane
+        self.rows = rows
+        self.populate_table()
+        panel = QWidget()
+        layout = QVBoxLayout()
+        info = QLabel(f'Rows: {len(rows)} Columns: {len(header)}')
+        layout.addWidget(info)
+        layout.addWidget(self.table)
+        panel.setLayout(layout)
+
+        splitter = self._find_splitter()
+        if splitter is None:
+            QMessageBox.warning(self, 'UI error', 'Cannot find layout splitter to show items')
+            return
+        old = splitter.widget(1)
+        splitter.insertWidget(1, panel)
+        if old is not None:
+            old.setParent(None)
+
+    def _handle_edit_item(self):
+        # try to find C_Item / S_Item pair
+        client_path, server_path = self._find_client_server_pair('C_Item')
+        items_mod = __import__('modules.items', fromlist=['read_items_pair', 'read_items'])
+        if client_path is None:
+            QMessageBox.warning(self, 'Not found', 'Client C_Item file not found under Lib/data/db')
+            return
+        if server_path is None:
+            # try read single file
+            header, rows, items = items_mod.read_items(client_path, delimiter='|', encoding='big5')
+            self._show_rows_in_table_panel(header, rows)
+            QMessageBox.information(self, 'Loaded', f'Loaded client file {client_path} (server mirror not found)')
+            return
+        # attempt to read pair
+        try:
+            header, rows, items = items_mod.read_items_pair(client_path, server_path, delimiter='|', encoding='big5')
+            self._show_rows_in_table_panel(header, rows)
+            QMessageBox.information(self, 'Loaded', f'Loaded pair:\nClient: {client_path}\nServer: {server_path}')
+        except ValueError as ve:
+            # pairs differ; try to load client and show warning
+            header, rows, items = items_mod.read_items(client_path, delimiter='|', encoding='big5')
+            self._show_rows_in_table_panel(header, rows)
+            QMessageBox.warning(self, 'Pair mismatch', f'Client and server differ: {ve}\nLoaded client file.')
+
+    def _handle_edit_itemmall(self):
+        client_path, server_path = self._find_client_server_pair('C_ItemMall')
+        items_mod = __import__('modules.items', fromlist=['read_items_pair', 'read_items'])
+        if client_path is None:
+            QMessageBox.warning(self, 'Not found', 'Client C_ItemMall file not found under Lib/data/db')
+            return
+        if server_path is None:
+            header, rows, items = items_mod.read_items(client_path, delimiter='|', encoding='big5')
+            self._show_rows_in_table_panel(header, rows)
+            QMessageBox.information(self, 'Loaded', f'Loaded client file {client_path} (server mirror not found)')
+            return
+        try:
+            header, rows, items = items_mod.read_items_pair(client_path, server_path, delimiter='|', encoding='big5')
+            self._show_rows_in_table_panel(header, rows)
+            QMessageBox.information(self, 'Loaded', f'Loaded pair:\nClient: {client_path}\nServer: {server_path}')
+        except ValueError as ve:
+            header, rows, items = items_mod.read_items(client_path, delimiter='|', encoding='big5')
+            self._show_rows_in_table_panel(header, rows)
+            QMessageBox.warning(self, 'Pair mismatch', f'Client and server differ: {ve}\nLoaded client file.')
 
     def save_file(self):
         if not self.current_path:
