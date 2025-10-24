@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox,
     QListWidget, QSplitter, QLabel, QTextEdit
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 import sys
 from pathlib import Path
 from typing import Optional
@@ -79,6 +79,8 @@ class MainWindow(QMainWindow):
         self.current_path = None
         self.rows = []
         self.pair_paths = None
+        self._current_worker = None
+
 
     def create_intro_panel(self) -> QWidget:
         w = QWidget()
@@ -189,52 +191,20 @@ class MainWindow(QMainWindow):
         # If we detected a client/server pair, read both and compare for divergences.
         # We still load the primary (client) file into the table, but show a warning
         # if the server file differs so the user can decide what to do.
+        # Use background worker to read files so UI doesn't block on large datasets.
         self.rows = []
         if getattr(self, 'pair_paths', None):
             client_path, server_path = self.pair_paths
-            try:
-                client_rows = _gfio.read_pipe_file(client_path, encoding=encoding, expected_fields=93)
-            except Exception as exc:
-                QMessageBox.critical(self, 'Read error', f'Failed to read client file: {exc}')
-                return
-            try:
-                server_rows = _gfio.read_pipe_file(server_path, encoding=encoding, expected_fields=93)
-            except Exception as exc:
-                # still load client but inform about server read failure
-                self.rows = client_rows
-                QMessageBox.warning(self, 'Server read error', f'Failed to read server mirror: {exc}')
-                self.populate_table()
-                return
-
-            # compare lengths
-            if len(client_rows) != len(server_rows):
-                QMessageBox.warning(self, 'Client/Server mismatch',
-                                    f'Client and Server have different number of records: {len(client_rows)} vs {len(server_rows)}')
-            else:
-                # look for first differing row
-                diff_index = None
-                for i, (a, b) in enumerate(zip(client_rows, server_rows)):
-                    if a != b:
-                        diff_index = i
-                        break
-                if diff_index is not None:
-                    # create a short preview of the differing row (first 6 cols)
-                    a = client_rows[diff_index]
-                    b = server_rows[diff_index]
-                    a_preview = '|'.join(a[:6])
-                    b_preview = '|'.join(b[:6])
-                    QMessageBox.warning(self, 'Client/Server mismatch',
-                                        f'Files differ at row {diff_index+1} (1-based).\nClient preview: {a_preview}\nServer preview: {b_preview}')
-
-            # load client rows into table for editing
-            self.rows = client_rows
+            worker = ReadPairWorker(client_path, server_path, encoding=encoding, expected=93)
         else:
-            try:
-                self.rows = _gfio.read_pipe_file(self.current_path, encoding=encoding, expected_fields=93)
-            except Exception as exc:
-                QMessageBox.critical(self, 'Read error', f'Failed to read file: {exc}')
-                return
-        self.populate_table()
+            worker = ReadPairWorker(self.current_path, None, encoding=encoding, expected=93)
+
+        # connect signals
+        worker.result.connect(self._on_read_result)
+        worker.error.connect(self._on_read_error)
+        self._current_worker = worker
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        worker.start()
 
     def find_lib(self):
         p = Path.cwd()
@@ -344,6 +314,54 @@ class MainWindow(QMainWindow):
                 server_path = None
         return client_path, server_path
 
+    def _on_read_result(self, data):
+        """Handle results from ReadPairWorker. Populate table and show any warnings/messages."""
+        QApplication.restoreOverrideCursor()
+        self._current_worker = None
+        client_rows = data.get('client')
+        server_rows = data.get('server')
+
+        # derive header from modules.items.reader DEFAULT_HEADER if needed
+        try:
+            from modules.items import reader as items_reader
+            header = items_reader.DEFAULT_HEADER.copy()
+        except Exception:
+            header = [f'col{i}' for i in range(93)]
+
+        if client_rows is None:
+            QMessageBox.critical(self, 'Read error', 'Failed to read primary file (no data)')
+            return
+
+        if server_rows is None:
+            self._show_rows_in_table_panel(header, client_rows)
+            QMessageBox.information(self, 'Loaded', f'Loaded client file (server mirror not found)')
+            return
+
+        # both present: compare
+        if client_rows == server_rows:
+            self._show_rows_in_table_panel(header, client_rows)
+            QMessageBox.information(self, 'Loaded', f'Loaded pair (identical)')
+            return
+
+        # find first differing row
+        diff_index = None
+        for i, (a, b) in enumerate(zip(client_rows, server_rows)):
+            if a != b:
+                diff_index = i
+                break
+        self._show_rows_in_table_panel(header, client_rows)
+        if diff_index is None and len(client_rows) != len(server_rows):
+            QMessageBox.warning(self, 'Pair mismatch', f'Client and Server have different number of records: {len(client_rows)} vs {len(server_rows)}')
+        else:
+            a_preview = '|'.join(client_rows[diff_index][:6]) if diff_index is not None else ''
+            b_preview = '|'.join(server_rows[diff_index][:6]) if diff_index is not None else ''
+            QMessageBox.warning(self, 'Pair mismatch', f'Client and server differ at row {diff_index+1 if diff_index is not None else "?"}.\nClient preview: {a_preview}\nServer preview: {b_preview}\nLoaded client file.')
+
+    def _on_read_error(self, msg: str):
+        QApplication.restoreOverrideCursor()
+        self._current_worker = None
+        QMessageBox.critical(self, 'Read error', f'Failed to read files: {msg}')
+
     def _show_rows_in_table_panel(self, header, rows):
         """Replace right pane with a panel containing the table and load rows."""
         # set rows and populate table then insert table into right pane
@@ -366,48 +384,30 @@ class MainWindow(QMainWindow):
             old.setParent(None)
 
     def _handle_edit_item(self):
-        # try to find C_Item / S_Item pair
+        # try to find C_Item / S_Item pair and read using gfio (robust to multiline Tip)
         client_path, server_path = self._find_client_server_pair('C_Item')
-        items_mod = __import__('modules.items', fromlist=['read_items_pair', 'read_items'])
         if client_path is None:
             QMessageBox.warning(self, 'Not found', 'Client C_Item file not found under Lib/data/db')
             return
-        if server_path is None:
-            # try read single file
-            header, rows, items = items_mod.read_items(client_path, delimiter='|', encoding='big5')
-            self._show_rows_in_table_panel(header, rows)
-            QMessageBox.information(self, 'Loaded', f'Loaded client file {client_path} (server mirror not found)')
-            return
-        # attempt to read pair
-        try:
-            header, rows, items = items_mod.read_items_pair(client_path, server_path, delimiter='|', encoding='big5')
-            self._show_rows_in_table_panel(header, rows)
-            QMessageBox.information(self, 'Loaded', f'Loaded pair:\nClient: {client_path}\nServer: {server_path}')
-        except ValueError as ve:
-            # pairs differ; try to load client and show warning
-            header, rows, items = items_mod.read_items(client_path, delimiter='|', encoding='big5')
-            self._show_rows_in_table_panel(header, rows)
-            QMessageBox.warning(self, 'Pair mismatch', f'Client and server differ: {ve}\nLoaded client file.')
+        # Read files in background to avoid blocking the UI
+        worker = ReadPairWorker(client_path, server_path, encoding='big5', expected=93)
+        worker.result.connect(self._on_read_result)
+        worker.error.connect(self._on_read_error)
+        self._current_worker = worker
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        worker.start()
 
     def _handle_edit_itemmall(self):
         client_path, server_path = self._find_client_server_pair('C_ItemMall')
-        items_mod = __import__('modules.items', fromlist=['read_items_pair', 'read_items'])
         if client_path is None:
             QMessageBox.warning(self, 'Not found', 'Client C_ItemMall file not found under Lib/data/db')
             return
-        if server_path is None:
-            header, rows, items = items_mod.read_items(client_path, delimiter='|', encoding='big5')
-            self._show_rows_in_table_panel(header, rows)
-            QMessageBox.information(self, 'Loaded', f'Loaded client file {client_path} (server mirror not found)')
-            return
-        try:
-            header, rows, items = items_mod.read_items_pair(client_path, server_path, delimiter='|', encoding='big5')
-            self._show_rows_in_table_panel(header, rows)
-            QMessageBox.information(self, 'Loaded', f'Loaded pair:\nClient: {client_path}\nServer: {server_path}')
-        except ValueError as ve:
-            header, rows, items = items_mod.read_items(client_path, delimiter='|', encoding='big5')
-            self._show_rows_in_table_panel(header, rows)
-            QMessageBox.warning(self, 'Pair mismatch', f'Client and server differ: {ve}\nLoaded client file.')
+        worker = ReadPairWorker(client_path, server_path, encoding='big5', expected=93)
+        worker.result.connect(self._on_read_result)
+        worker.error.connect(self._on_read_error)
+        self._current_worker = worker
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        worker.start()
 
     def save_file(self):
         if not self.current_path:
@@ -451,3 +451,33 @@ def run_gui():
     w.resize(1000, 600)
     w.show()
     return app.exec()
+
+
+class ReadPairWorker(QThread):
+    """QThread worker that reads a client file and an optional server file
+    using gfio.read_pipe_file and emits the result as a dict: {'client': rows, 'server': rows}
+    """
+    result = Signal(object)
+    error = Signal(str)
+
+    def __init__(self, client_path: Optional[str], server_path: Optional[str], encoding: str = 'big5', expected: int = 93):
+        super().__init__()
+        self.client_path = client_path
+        self.server_path = server_path
+        self.encoding = encoding
+        self.expected = expected
+
+    def run(self):
+        try:
+            data = {}
+            if self.client_path:
+                data['client'] = _gfio.read_pipe_file(self.client_path, encoding=self.encoding, expected_fields=self.expected)
+            else:
+                data['client'] = None
+            if self.server_path:
+                data['server'] = _gfio.read_pipe_file(self.server_path, encoding=self.encoding, expected_fields=self.expected)
+            else:
+                data['server'] = None
+            self.result.emit(data)
+        except Exception as e:
+            self.error.emit(str(e))

@@ -40,21 +40,31 @@ def read_pipe_file(path: str, encoding: Optional[str] = None, limit: Optional[in
                 i += 1
         return rows
 
-    # expected_fields provided: use regex split on newline before an ID
+    # expected_fields provided: find logical records that start with an ID at
+    # the beginning of a line. This ignores blank lines and any leading
+    # non-record header. We use a DOTALL/multiline regex to capture from a
+    # line that begins with digits+"|" up to (but not including) the next
+    # such line or end-of-file. This is robust against Tip fields that
+    # contain embedded newlines.
     import re
     with open(path, 'r', encoding=encoding, errors='replace', newline='') as f:
         text = f.read()
 
-    # Split at newlines that precede a numeric ID + pipe. Keep initial segment.
-    parts = re.split(r'\r?\n(?=\d+\|)', text)
+    # Pattern: from line start (^) match optional spaces then digits + '|' and
+    # consume lazily until the next line that also starts with digits+| or EOF.
+    pattern = re.compile(r'(?ms)^\s*\d+\|.*?(?=(?:\r?\n\s*\d+\|)|\Z)')
+    matches = pattern.findall(text)
+
     expected_len = expected_fields
     count = 0
-    for part in parts:
+    for match in matches:
         if limit is not None and count >= limit:
             break
-        # strip trailing newline characters (if any) then split by pipe
-        record = part.rstrip('\r\n')
+        record = match.rstrip('\r\n')
         fields = record.split('|')
+        # ensure first field (id) has no stray CR/LF or surrounding whitespace
+        if fields:
+            fields[0] = fields[0].lstrip('\r\n').strip()
         # normalize to expected length
         if len(fields) < expected_len:
             fields += [''] * (expected_len - len(fields))
@@ -72,30 +82,22 @@ def read_ids(path: str, encoding: Optional[str] = None, limit: Optional[int] = N
     """
     if encoding is None:
         encoding = detect_encoding(path)
+    # Use the same regex strategy as read_pipe_file to detect logical records
+    # that start with an ID. This avoids miscounting when Tip fields contain
+    # embedded newlines or when blank lines exist between records.
+    import re
     ids = []
     with open(path, 'r', encoding=encoding, errors='replace', newline='') as f:
-        cur_id = None
-        count = 0
-        for raw in f:
-            if limit is not None and count >= limit:
-                break
-            line = raw.rstrip('\r\n')
-            first = line.split('|', 1)[0]
-            is_new = False
-            try:
-                if first != '':
-                    _ = int(first)
-                    is_new = True
-            except Exception:
-                is_new = False
+        text = f.read()
 
-            if is_new:
-                ids.append(first)
-                cur_id = first
-                count += 1
-            else:
-                # continuation line - ignore for ids
-                continue
+    pattern = re.compile(r'(?ms)^\s*(\d+)\|.*?(?=(?:\r?\n\s*\d+\|)|\Z)')
+    count = 0
+    for m in pattern.finditer(text):
+        if limit is not None and count >= limit:
+            break
+        id_str = m.group(1).strip()
+        ids.append(id_str)
+        count += 1
     return ids
 
 
