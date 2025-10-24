@@ -1,11 +1,13 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QScrollArea,
     QLineEdit, QTextEdit, QFormLayout, QGroupBox, QGridLayout, QCheckBox,
-    QTableWidgetItem
+    QTableWidgetItem, QComboBox, QMessageBox, QSpinBox
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from pathlib import Path
 import gfio
+from . import flags as item_flags
 
 
 def panel_widget(parent):
@@ -178,12 +180,118 @@ def build_item_editor_widget(parent, rows, header):
 
     body_layout.addLayout(left_v)
 
+    # Initialize widgets dict
+    widgets = {}
+
     # Right column: param groups
     right_v = QVBoxLayout()
+    
+    # ============= ITEM TYPE & QUALITY =============
+    gp_basic = QGroupBox('Item Type & Quality')
+    grid_basic = QGridLayout()
+    
+    # Item Type
+    try:
+        item_type_idx = header.index('ItemType')
+    except:
+        item_type_idx = None
+    item_type_combo = QComboBox()
+    item_type_combo.addItems([''] + list(item_flags.ITEM_TYPE.values()))
+    widgets['ItemType'] = (item_type_idx, item_type_combo)
+    grid_basic.addWidget(QLabel('Item Type:'), 0, 0)
+    grid_basic.addWidget(item_type_combo, 0, 1)
+    
+    # Item Quality
+    try:
+        quality_idx = header.index('ItemQuality')
+    except:
+        quality_idx = None
+    quality_combo = QComboBox()
+    quality_combo.addItems([''] + list(item_flags.QUALITY.values()))
+    widgets['ItemQuality'] = (quality_idx, quality_combo)
+    grid_basic.addWidget(QLabel('Quality:'), 1, 0)
+    grid_basic.addWidget(quality_combo, 1, 1)
+    
+    # Target
+    try:
+        target_idx = header.index('Target')
+    except:
+        target_idx = None
+    target_combo = QComboBox()
+    target_combo.addItems([''] + list(item_flags.TARGET.values()))
+    widgets['Target'] = (target_idx, target_combo)
+    grid_basic.addWidget(QLabel('Target:'), 2, 0)
+    grid_basic.addWidget(target_combo, 2, 1)
+    
+    gp_basic.setLayout(grid_basic)
+    right_v.addWidget(gp_basic)
+    
+    # ============= FLAGS =============
+    gp_flags = QGroupBox('Item Flags')
+    grid_flags = QGridLayout()
+    
+    try:
+        flags_idx = header.index('OpFlags')
+    except:
+        flags_idx = None
+    flags_input = QLineEdit()
+    flags_input.setPlaceholderText("Enter number or check flags below")
+    widgets['OpFlags'] = (flags_idx, flags_input)
+    grid_flags.addWidget(QLabel('OpFlags Value:'), 0, 0, 1, 2)
+    grid_flags.addWidget(flags_input, 1, 0, 1, 2)
+    
+    # Checkboxes for flags
+    flag_checks = {}
+    r = 2
+    c = 0
+    for flag_name in sorted(item_flags.FLAGS.keys()):
+        if flag_name not in ['OnlyStartBit', 'ReplaceableStartBit', 'Only', 'Replaceable']:
+            cb = QCheckBox(flag_name)
+            flag_checks[flag_name] = cb
+            grid_flags.addWidget(cb, r, c)
+            c += 1
+            if c >= 2:
+                c = 0
+                r += 1
+    
+    gp_flags.setLayout(grid_flags)
+    right_v.addWidget(gp_flags)
+    
+    # ============= FLAGS PLUS =============
+    gp_flags_plus = QGroupBox('Item Flags Plus (OP)')
+    grid_flags_plus = QGridLayout()
+    
+    try:
+        flags_plus_idx = header.index('OpFlagsPlus')
+    except:
+        flags_plus_idx = None
+    flags_plus_input = QLineEdit()
+    flags_plus_input.setPlaceholderText("Enter number or check flags below")
+    widgets['OpFlagsPlus'] = (flags_plus_idx, flags_plus_input)
+    grid_flags_plus.addWidget(QLabel('OpFlagsPlus Value:'), 0, 0, 1, 2)
+    grid_flags_plus.addWidget(flags_plus_input, 1, 0, 1, 2)
+    
+    # Checkboxes for flags plus
+    flag_plus_checks = {}
+    r = 2
+    c = 0
+    for flag_name in sorted(item_flags.FLAGS_PLUS.keys()):
+        if flag_name not in ['ISRideCombine', 'ISChairCombine']:
+            cb = QCheckBox(flag_name)
+            flag_plus_checks[flag_name] = cb
+            grid_flags_plus.addWidget(cb, r, c)
+            c += 1
+            if c >= 2:
+                c = 0
+                r += 1
+    
+    gp_flags_plus.setLayout(grid_flags_plus)
+    right_v.addWidget(gp_flags_plus)
+    
+    # ============= MAIN PARAMETERS =============
     gp_main = QGroupBox('Main Parameters')
     grid_main = QGridLayout()
     sample_fields = ['MaxHp', 'MaxMp', 'Str', 'Con', 'Int', 'Dex', 'Attack', 'AttackSpeed']
-    widgets = {}
     r = 0
     c = 0
     for fld in sample_fields:
@@ -227,7 +335,6 @@ def build_item_editor_widget(parent, rows, header):
             if icon_name:
                 icon_path = Path(getattr(parent, 'lib_path', Path.cwd() / 'Lib')) / 'itemicon' / icon_name
                 if icon_path.exists():
-                    from PySide6.QtGui import QPixmap
                     pix = QPixmap(str(icon_path))
                     if pix and not pix.isNull():
                         icon_label.setPixmap(pix.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation))
@@ -245,11 +352,64 @@ def build_item_editor_widget(parent, rows, header):
         id_field.setText(r[0] if len(r) > 0 else '')
         name_field.setText(r[9] if len(r) > 9 else '')
         desc.setPlainText(r[92] if len(r) > 92 else '')
-        for fld, (idx, w) in widgets.items():
-            if idx is None:
-                w.setText('')
-            else:
-                w.setText(r[idx] if idx < len(r) else '')
+        
+        # Load OpFlags and decode them
+        if 'OpFlags' in widgets:
+            opflags_idx, opflags_widget = widgets['OpFlags']
+            if opflags_idx is not None and opflags_idx < len(r):
+                flags_value = int(r[opflags_idx]) if r[opflags_idx].isdigit() else 0
+                opflags_widget.setText(str(flags_value))
+                # Update checkboxes
+                decoded = item_flags.decode_flags(flags_value)
+                for flag_name, cb in flag_checks.items():
+                    cb.setChecked(flag_name in decoded)
+        
+        # Load OpFlagsPlus and decode them
+        if 'OpFlagsPlus' in widgets:
+            opflags_plus_idx, opflags_plus_widget = widgets['OpFlagsPlus']
+            if opflags_plus_idx is not None and opflags_plus_idx < len(r):
+                flags_plus_value = int(r[opflags_plus_idx]) if r[opflags_plus_idx].isdigit() else 0
+                opflags_plus_widget.setText(str(flags_plus_value))
+                # Update checkboxes
+                decoded = item_flags.decode_flags_plus(flags_plus_value)
+                for flag_name, cb in flag_plus_checks.items():
+                    cb.setChecked(flag_name in decoded)
+        
+        # Load combo boxes
+        for fld, (colidx, w) in widgets.items():
+            if isinstance(w, QComboBox):
+                if colidx is None:
+                    w.setCurrentIndex(0)
+                else:
+                    val = r[colidx] if colidx < len(r) else ''
+                    # Find matching value
+                    if fld == 'ItemType':
+                        if val.isdigit():
+                            name = item_flags.get_item_type_name(int(val))
+                        else:
+                            name = val
+                        idx_combo = w.findText(name) if name else 0
+                    elif fld == 'ItemQuality':
+                        if val.isdigit():
+                            name = item_flags.get_quality_name(int(val))
+                        else:
+                            name = val
+                        idx_combo = w.findText(name) if name else 0
+                    elif fld == 'Target':
+                        if val.isdigit():
+                            name = item_flags.get_target_name(int(val))
+                        else:
+                            name = val
+                        idx_combo = w.findText(name) if name else 0
+                    else:
+                        idx_combo = 0
+                    w.setCurrentIndex(max(0, idx_combo))
+            elif isinstance(w, QLineEdit):
+                if colidx is None:
+                    w.setText('')
+                else:
+                    w.setText(r[colidx] if colidx < len(r) else '')
+        
         # update selector display text
         selector.setItemText(idx, _display_label_for_row(idx))
         selector.setCurrentIndex(idx)
@@ -262,12 +422,50 @@ def build_item_editor_widget(parent, rows, header):
             r.append('')
         r[9] = name_field.text()
         r[92] = desc.toPlainText()
+        
+        # Save OpFlags from checkboxes
+        if 'OpFlags' in widgets:
+            opflags_idx, opflags_widget = widgets['OpFlags']
+            checked_flags = [name for name, cb in flag_checks.items() if cb.isChecked()]
+            flags_value = item_flags.encode_flags(checked_flags)
+            if opflags_idx is not None:
+                while len(r) <= opflags_idx:
+                    r.append('')
+                r[opflags_idx] = str(flags_value)
+        
+        # Save OpFlagsPlus from checkboxes
+        if 'OpFlagsPlus' in widgets:
+            opflags_plus_idx, opflags_plus_widget = widgets['OpFlagsPlus']
+            checked_flags = [name for name, cb in flag_plus_checks.items() if cb.isChecked()]
+            flags_plus_value = item_flags.encode_flags_plus(checked_flags)
+            if opflags_plus_idx is not None:
+                while len(r) <= opflags_plus_idx:
+                    r.append('')
+                r[opflags_plus_idx] = str(flags_plus_value)
+        
+        # Save combo box values
         for fld, (colidx, w) in widgets.items():
-            if colidx is None:
-                continue
-            while len(r) <= colidx:
-                r.append('')
-            r[colidx] = w.text()
+            if isinstance(w, QComboBox):
+                if colidx is None:
+                    continue
+                while len(r) <= colidx:
+                    r.append('')
+                selected_text = w.currentText()
+                if fld == 'ItemType' and selected_text:
+                    value = item_flags.get_item_type_value(selected_text)
+                elif fld == 'ItemQuality' and selected_text:
+                    value = item_flags.get_quality_value(selected_text)
+                elif fld == 'Target' and selected_text:
+                    value = item_flags.get_target_value(selected_text)
+                else:
+                    value = selected_text
+                r[colidx] = str(value) if value else ''
+            elif isinstance(w, QLineEdit) and fld not in ['OpFlags', 'OpFlagsPlus']:
+                if colidx is None:
+                    continue
+                while len(r) <= colidx:
+                    r.append('')
+                r[colidx] = w.text()
 
         # update parent's table if present
         try:
