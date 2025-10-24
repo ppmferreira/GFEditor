@@ -150,12 +150,12 @@ class MainWindow(QMainWindow):
             old.setParent(None)
 
     def open_file(self):
-        path, _ = QFileDialog.getOpenFileName(self, 'Open file', str(Path.cwd() / 'Lib'))
+        path, _ = QFileDialog.getOpenFileName(self, 'Open file', str(Path.cwd() / 'Assets'))
         if not path:
             return
         # ask encoding
         encoding = 'big5'  # for now, assume big5 for data files
-        # try to detect a client/server pair (C_/S_ files under Lib/data/db and Lib/data/serverdb)
+        # try to detect a client/server pair (C_/S_ files under Assets/Client and Assets/Server)
         p = Path(path)
         self.pair_paths = None
         try:
@@ -170,20 +170,20 @@ class MainWindow(QMainWindow):
         try:
             name = p.name
             parent = p.parent
-            # detect common layout: Lib/data/db/C_*.ini or Lib/data/serverdb/S_*.ini (or .txt)
+            # detect common layout: Assets/Client/C_*.ini or Assets/Server/S_*.ini (or .txt)
             str_path = str(p)
-            if 'Lib{}data{}db'.format(Path.sep, Path.sep) in str_path.replace('/', Path.sep):
-                # selected is client file under Lib/data/db
+            if 'Assets{}Client'.format(Path.sep) in str_path.replace('/', Path.sep):
+                # selected is client file under Assets/Client
                 if name.startswith('C_') or name.startswith('c_'):
                     counterpart_name = name.replace('C_', 'S_', 1)
-                    counterpart = Path(str(p).replace(str(Path('Lib') / 'data' / 'db'), str(Path('Lib') / 'data' / 'serverdb'))).with_name(counterpart_name)
+                    counterpart = Path(str(p).replace(str(Path('Assets') / 'Client'), str(Path('Assets') / 'Server'))).with_name(counterpart_name)
                     if counterpart.exists():
                         self.pair_paths = (str(p), str(counterpart))
                         # prefer to load client file rows
                         self.current_path = str(p)
                 elif name.startswith('S_') or name.startswith('s_'):
                     counterpart_name = name.replace('S_', 'C_', 1)
-                    counterpart = Path(str(p).replace(str(Path('Lib') / 'data' / 'serverdb'), str(Path('Lib') / 'data' / 'db'))).with_name(counterpart_name)
+                    counterpart = Path(str(p).replace(str(Path('Assets') / 'Server'), str(Path('Assets') / 'Client'))).with_name(counterpart_name)
                     if counterpart.exists():
                         self.pair_paths = (str(counterpart), str(p))
                         self.current_path = str(counterpart)
@@ -211,13 +211,13 @@ class MainWindow(QMainWindow):
     def find_lib(self):
         p = Path.cwd()
         for _ in range(10):
-            candidate = p / 'Lib'
+            candidate = p / 'Assets'
             if candidate.exists():
                 return candidate
             if p.parent == p:
                 break
             p = p.parent
-        return Path.cwd() / 'Lib'  # fallback
+        return Path.cwd() / 'Assets'  # fallback
 
     def on_module_changed(self, row: int):
         if row < 0 or row >= len(self.modules):
@@ -315,8 +315,8 @@ class MainWindow(QMainWindow):
 
         Returns (client_path, server_path) or (None, None) if not found.
         """
-        db_dir = Path(self.lib_path) / 'data' / 'db'
-        server_dir = Path(self.lib_path) / 'data' / 'serverdb'
+        db_dir = Path(self.lib_path) / 'Client'
+        server_dir = Path(self.lib_path) / 'Server'
         # look for client file starting with base
         client_candidates = list(db_dir.glob(f"{base}*.ini")) + list(db_dir.glob(f"{base}*.txt"))
         if not client_candidates:
@@ -457,7 +457,7 @@ class MainWindow(QMainWindow):
         # try to find C_Item / S_Item pair and read using gfio (robust to multiline Tip)
         client_path, server_path = self._find_client_server_pair('C_Item')
         if client_path is None:
-            QMessageBox.warning(self, 'Not found', 'Client C_Item file not found under Lib/data/db')
+            QMessageBox.warning(self, 'Not found', 'Client C_Item file not found under Assets/Client')
             return
         # Read files in background to avoid blocking the UI
         worker = ReadPairWorker(client_path, server_path, encoding='big5', expected=93)
@@ -470,7 +470,7 @@ class MainWindow(QMainWindow):
     def _handle_edit_itemmall(self):
         client_path, server_path = self._find_client_server_pair('C_ItemMall')
         if client_path is None:
-            QMessageBox.warning(self, 'Not found', 'Client C_ItemMall file not found under Lib/data/db')
+            QMessageBox.warning(self, 'Not found', 'Client C_ItemMall file not found under Assets/Client')
             return
         worker = ReadPairWorker(client_path, server_path, encoding='big5', expected=93)
         worker.result.connect(self._on_read_result)
@@ -514,8 +514,6 @@ class MainWindow(QMainWindow):
         else:
             icon_label.setText(icon_name or 'No Icon')
             icon_label.setAlignment(Qt.AlignCenter)
-
-        left_v.addWidget(icon_label)
 
         # Name and ID
         id_field = QLineEdit(row[0] if len(row) > 0 else '')
