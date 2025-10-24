@@ -1,140 +1,343 @@
-/* Modern SaaS-like stylesheet for GFEditor */
+/* Premium Dark Mode Stylesheet for GFEditor - 2025 Design */
 
-/* Base */
+/* ======================== COLOR PALETTE ======================== */
+/* Primary: Vibrant Cyan/Blue (#00d4ff) */
+/* Secondary: Deep Navy (#1a2a3a) */
+/* Background: Dark charcoal (#0f1419) */
+/* Accent: Vibrant Purple (#6d28d9) */
+
+/* ======================== BASE STYLING ======================== */
 QWidget {
-    background: #f6f9fc;
-    color: #0f1720;
-    font-family: 'Segoe UI', 'Inter', Arial, sans-serif;
+    background: #0f1419;
+    color: #e0e6ed;
+    font-family: -apple-system, 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
     font-size: 11pt;
+    margin: 0px;
+    padding: 0px;
 }
 
 QMainWindow {
-    background: #f6f9fc;
+    background: #0f1419;
 }
 
-/* Panels and lists */
+/* ======================== LEFT SIDEBAR STYLING ======================== */
 QListWidget, QListView {
-    background: #ffffff;
-    border: 1px solid #e6eef6;
-    padding: 6px;
+    background: #1a2a3a;
+    border: none;
+    border-right: 2px solid #00d4ff;
+    padding: 0px;
+    border-radius: 0px;
+    outline: none;
+}
+
+QListWidget::item {
+    padding: 12px 16px;
+    margin: 4px 8px;
+    border-radius: 8px;
+    background: transparent;
+    color: #a0a8b8;
+    font-weight: 500;
+}
+
+QListWidget::item:hover {
+    background: #2a3a4a;
+    color: #e0e6ed;
+    padding-left: 20px;
+}
+
+QListWidget::item:selected {
+    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+    color: #ffffff;
+    font-weight: 600;
     border-radius: 8px;
 }
 
-/* Table */
-QTableWidget {
-    background: #ffffff;
-    alternate-background-color: #f8fbfd;
-    gridline-color: #eef3f6;
-    selection-background-color: #1aa39c;
-    selection-color: #ffffff;
-    border: 1px solid #e6eef6;
-    border-radius: 6px;
-}
-
-QTableWidget QTableCornerButton::section {
-    background: transparent;
-}
-
-QHeaderView::section {
-    background: #f0f5f8;
-    color: #072029;
-    padding: 6px 8px;
-    border: none;
-    border-bottom: 1px solid #e6eef6;
-    font-weight: 600;
-}
-
-QTableWidget::item {
-    padding: 6px 8px;
-}
-
-QTableWidget::item:selected {
-    background: #1aa39c;
-    color: #ffffff;
-}
-
-/* Buttons */
+/* ======================== BUTTON STYLING ======================== */
 QPushButton {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #17b3ad, stop:1 #0f9a91);
+    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
     color: white;
     border: none;
-    padding: 8px 12px;
+    padding: 10px 16px;
     border-radius: 8px;
     font-weight: 600;
+    font-size: 10pt;
+    outline: none;
 }
 
 QPushButton:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #19c6bf, stop:1 #119f96);
+    background: linear-gradient(135deg, #33e0ff 0%, #00aadd 100%);
+    padding: 10px 18px;
+}
+
+QPushButton:pressed {
+    background: linear-gradient(135deg, #0088aa 0%, #005588 100%);
 }
 
 QPushButton:disabled {
-    background: #dbe8e6;
-    color: #9aaeb0;
+    background: #3a4a5a;
+    color: #6a7a8a;
 }
 
-/* Inputs */
-QLineEdit, QTextEdit, QPlainTextEdit, QComboBox {
-    background: white;
-    border: 1px solid #e6eef6;
-    padding: 6px 8px;
-    border-radius: 6px;
+QPushButton:focus {
+    outline: 2px solid #00d4ff;
+    outline-offset: -6px;
 }
 
-QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
-    border: 1px solid #1aa39c;
-    box-shadow: 0 0 0 3px rgba(26,163,156,0.06);
+/* ======================== TABLE STYLING ======================== */
+QTableWidget {
+    background: #1a2a3a;
+    alternate-background-color: #151d27;
+    gridline-color: #2a3a4a;
+    selection-background-color: #00d4ff;
+    selection-color: #000000;
+    border: none;
+    border-radius: 0px;
+    outline: none;
+}
+
+QTableWidget::item {
+    padding: 8px 12px;
+    color: #e0e6ed;
+}
+
+QTableWidget::item:selected {
+    background: #00d4ff;
+    color: #000000;
+    font-weight: 500;
+}
+
+QTableWidget::item:hover {
+    background: #2a4a5a;
+}
+
+QHeaderView::section {
+    background: linear-gradient(180deg, #1a2a3a 0%, #151d27 100%);
+    color: #00d4ff;
+    padding: 10px 12px;
+    border: none;
+    border-bottom: 2px solid #00d4ff;
+    font-weight: 700;
+    font-size: 10pt;
+}
+
+QTableWidget QTableCornerButton::section {
+    background: linear-gradient(180deg, #1a2a3a 0%, #151d27 100%);
+    border: none;
+    border-bottom: 2px solid #00d4ff;
+}
+
+/* ======================== INPUT FIELDS STYLING ======================== */
+QLineEdit, QPlainTextEdit {
+    background: #1a2a3a;
+    color: #e0e6ed;
+    border: 2px solid #2a3a4a;
+    padding: 8px 12px;
+    border-radius: 8px;
+    selection-background-color: #00d4ff;
+    selection-color: #000000;
+    font-size: 10pt;
+}
+
+QLineEdit:focus, QPlainTextEdit:focus {
+    border: 2px solid #00d4ff;
+    background: #151d27;
+}
+
+QLineEdit:hover, QPlainTextEdit:hover {
+    border: 2px solid #00d4ff;
+    background: #1f2f3f;
 }
 
 QTextEdit {
-    background: #ffffff;
+    background: #1a2a3a;
+    color: #e0e6ed;
+    border: 2px solid #2a3a4a;
+    padding: 10px 12px;
+    border-radius: 8px;
+    selection-background-color: #00d4ff;
+    selection-color: #000000;
 }
 
-/* Form labels */
+QTextEdit:focus {
+    border: 2px solid #00d4ff;
+    background: #151d27;
+}
+
+QTextEdit:hover {
+    border: 2px solid #00d4ff;
+}
+
+QComboBox {
+    background: #1a2a3a;
+    color: #e0e6ed;
+    border: 2px solid #2a3a4a;
+    padding: 6px 10px;
+    border-radius: 6px;
+    selection-background-color: #00d4ff;
+}
+
+QComboBox:focus {
+    border: 2px solid #00d4ff;
+    background: #151d27;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    background: none;
+    color: #00d4ff;
+}
+
+/* ======================== GROUPBOX STYLING ======================== */
+QGroupBox {
+    color: #e0e6ed;
+    border: 2px solid #2a3a4a;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 8px;
+    font-weight: 600;
+    background: #151d27;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0px 4px;
+    color: #00d4ff;
+    font-size: 11pt;
+}
+
+/* ======================== LABEL STYLING ======================== */
 QLabel {
-    color: #072029;
+    color: #e0e6ed;
+    font-weight: 500;
 }
 
-/* Scroll area */
+/* ======================== SCROLL AREA STYLING ======================== */
 QScrollArea {
-    background: transparent;
-}
-
-/* Card-like panels */
-QWidget#card, QWidget[role="card"] {
-    background: #ffffff;
-    border: 1px solid #e6eef6;
-    border-radius: 10px;
-    padding: 12px;
-}
-
-/* Small helpers */
-QToolButton {
     background: transparent;
     border: none;
 }
 
-/* Make selection in list more subtle */
-QListWidget::item:selected {
-    background: #e6f7f5;
-    color: #072029;
+QScrollBar:vertical {
+    background: #0f1419;
+    width: 12px;
+    border: none;
+}
+
+QScrollBar::handle:vertical {
+    background: linear-gradient(90deg, #00d4ff 0%, #0099cc 100%);
     border-radius: 6px;
+    min-height: 20px;
+    margin: 2px;
 }
 
-/* Status bar / labels */
-QStatusBar {
-    background: #ffffff;
-    border-top: 1px solid #e6eef6;
+QScrollBar::handle:vertical:hover {
+    background: linear-gradient(90deg, #33e0ff 0%, #00aadd 100%);
 }
 
-/* Ensure dialogs look consistent */
+QScrollBar:horizontal {
+    background: #0f1419;
+    height: 12px;
+    border: none;
+}
+
+QScrollBar::handle:horizontal {
+    background: linear-gradient(180deg, #00d4ff 0%, #0099cc 100%);
+    border-radius: 6px;
+    min-width: 20px;
+    margin: 2px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: linear-gradient(180deg, #33e0ff 0%, #00aadd 100%);
+}
+
+QScrollBar::add-line, QScrollBar::sub-line {
+    border: none;
+    background: none;
+}
+
+/* ======================== CHECKBOX STYLING ======================== */
+QCheckBox {
+    color: #e0e6ed;
+    spacing: 8px;
+    outline: none;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 2px solid #2a3a4a;
+    background: #1a2a3a;
+}
+
+QCheckBox::indicator:hover {
+    border: 2px solid #00d4ff;
+    background: #1f2f3f;
+}
+
+QCheckBox::indicator:checked {
+    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+    border: 2px solid #0099cc;
+}
+
+/* ======================== DIALOG STYLING ======================== */
 QDialog {
-    background: #f6f9fc;
+    background: #0f1419;
 }
 
-/* Small utilities */
-QHeaderView::section:horizontal { padding-left: 8px; }
+QMessageBox QLabel, QMessageBox QPushButton {
+    color: #e0e6ed;
+}
 
-/* accent for links */
-QLabel.link { color: #0f9a91; text-decoration: underline; }
+/* ======================== STATUS BAR STYLING ======================== */
+QStatusBar {
+    background: #1a2a3a;
+    border-top: 2px solid #00d4ff;
+    color: #a0a8b8;
+    padding: 6px 12px;
+}
 
-/* End of modern SaaS theme */
+/* ======================== SPLITTER STYLING ======================== */
+QSplitter::handle {
+    background: linear-gradient(90deg, #2a3a4a 0%, #00d4ff 50%, #2a3a4a 100%);
+    width: 3px;
+    height: 3px;
+}
+
+QSplitter::handle:hover {
+    background: linear-gradient(90deg, #00d4ff 0%, #33e0ff 50%, #00d4ff 100%);
+}
+
+/* ======================== UTILITIES ======================== */
+QToolButton {
+    background: transparent;
+    border: none;
+    color: #00d4ff;
+    padding: 4px;
+}
+
+QToolButton:hover {
+    background: #2a3a4a;
+    border-radius: 4px;
+}
+
+QToolButton:pressed {
+    background: #1f2f3f;
+}
+
+/* ======================== SPECIAL SECTIONS ======================== */
+/* For intro panels */
+QTextEdit[readOnly="true"] {
+    background: #151d27;
+    border: 1px solid #2a3a4a;
+    color: #a0a8b8;
+}
+
+/* End of Premium Dark Mode Stylesheet */
