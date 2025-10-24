@@ -271,15 +271,40 @@ class MainWindow(QMainWindow):
         if old is not None:
             old.setParent(None)
 
-    def populate_table(self):
+    def populate_table(self, header: Optional[list] = None):
+        """Populate the QTableWidget from self.rows.
+
+        If `header` is provided, use it as the horizontal header labels
+        (will be trimmed or padded to match the column count).
+        """
         if not self.rows:
             self.table.clear()
             return
         max_cols = max(len(r) for r in self.rows)
-        self.table.setColumnCount(max_cols)
+        # ensure we have at least as many columns as there are headers
+        if header:
+            desired_cols = max(max_cols, len(header))
+        else:
+            desired_cols = max_cols
+        self.table.setColumnCount(desired_cols)
         self.table.setRowCount(len(self.rows))
+
+        # set header labels if provided
+        if header:
+            labels = list(header)
+            # pad or trim to match desired_cols
+            if len(labels) < desired_cols:
+                labels += [''] * (desired_cols - len(labels))
+            elif len(labels) > desired_cols:
+                labels = labels[:desired_cols]
+            try:
+                self.table.setHorizontalHeaderLabels(labels)
+            except Exception:
+                # ignore if UI not ready
+                pass
+
         for i, row in enumerate(self.rows):
-            for j in range(max_cols):
+            for j in range(desired_cols):
                 val = row[j] if j < len(row) else ''
                 self.table.setItem(i, j, QTableWidgetItem(val))
 
@@ -366,7 +391,7 @@ class MainWindow(QMainWindow):
         """Replace right pane with a panel containing the table and load rows."""
         # set rows and populate table then insert table into right pane
         self.rows = rows
-        self.populate_table()
+        self.populate_table(header)
         panel = QWidget()
         layout = QVBoxLayout()
         info = QLabel(f'Rows: {len(rows)} Columns: {len(header)}')
