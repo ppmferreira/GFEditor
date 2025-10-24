@@ -5,7 +5,8 @@ This provides: open file, show first lines in a table, save (writes back raw pip
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QWidget, QVBoxLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox,
-    QListWidget, QSplitter, QLabel, QTextEdit, QScrollArea, QFormLayout, QLineEdit
+    QListWidget, QSplitter, QLabel, QTextEdit, QScrollArea, QFormLayout, QLineEdit,
+    QGroupBox, QGridLayout, QCheckBox, QSizePolicy, QSpacerItem
 )
 from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, QThread, Signal
@@ -535,66 +536,181 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(left_v)
 
-        # Right column: attributes form
+        # Right column: build grouped parameter panels to mimic the more complex editor
         right_v = QVBoxLayout()
-        form = QFormLayout()
 
-        # friendly mapping for a subset of fields shown at right
-        friendly = {
-            'RestrictLevel': 'Level',
-            'EnchantId': 'Enchant',
-            'MaxDurability': 'Durability',
-            'MaxHp': 'HP',
-            'MaxMp': 'MP',
-            'Str': 'STR',
-            'Con': 'VIT',
-            'Int': 'INT',
-            'Vol': 'VON',
-            'Dex': 'AGI'
-        }
-
+        # Main Parameters group (grid)
+        gp_main = QGroupBox('Main Parameters')
+        grid_main = QGridLayout()
+        main_fields = ['MaxHp', 'MaxMp', 'Str', 'Con', 'Int', 'Vol', 'Dex',
+                       'Attack', 'RangeAttack', 'AvgPhysicoDamage', 'RandPhysicoDamage',
+                       'PhysicoDefence', 'MagicDefence', 'HitRate', 'DodgeRate',
+                       'PhysicoCriticalRate', 'PhysicoCriticalDamage', 'MagicCriticalRate', 'MagicCriticalDamage',
+                       'AttackSpeed', 'AttackRange']
         widgets = {}
-        # build form fields from header where available
-        for i, col in enumerate(header):
-            if col in friendly:
-                label = friendly[col]
-                val = row[i] if i < len(row) else ''
-                le = QLineEdit(val)
-                form.addRow(label + ':', le)
-                widgets[i] = le
+        r = 0
+        c = 0
+        for fld in main_fields:
+            # find column index for field name in header
+            try:
+                idx = header.index(fld)
+            except Exception:
+                idx = None
+            val = row[idx] if (idx is not None and idx < len(row)) else ''
+            le = QLineEdit(val)
+            widgets[fld] = (idx, le)
+            grid_main.addWidget(QLabel(fld+':'), r, c*2)
+            grid_main.addWidget(le, r, c*2+1)
+            c += 1
+            if c >= 2:
+                c = 0
+                r += 1
+        gp_main.setLayout(grid_main)
+        right_v.addWidget(gp_main)
 
-        right_v.addLayout(form)
+        # Enchant group
+        gp_enchant = QGroupBox('Enchant Parameters')
+        grid_enc = QGridLayout()
+        enc_fields = ['EnchantId', 'EnchantIndex', 'EnchantTimeType', 'EnchantDuration', 'EnchantLevel']
+        r = 0
+        for fld in enc_fields:
+            try:
+                idx = header.index(fld)
+            except Exception:
+                idx = None
+            val = row[idx] if (idx is not None and idx < len(row)) else ''
+            le = QLineEdit(val)
+            widgets[fld] = (idx, le)
+            grid_enc.addWidget(QLabel(fld+':'), r, 0)
+            grid_enc.addWidget(le, r, 1)
+            r += 1
+        gp_enchant.setLayout(grid_enc)
+        right_v.addWidget(gp_enchant)
 
-        # Save button
-        btn_save = QPushButton('Salvar este item')
+        # Price & Tip group
+        gp_price = QGroupBox('Price & Tip')
+        v_price = QVBoxLayout()
+        # Price fields
+        price_layout = QHBoxLayout()
+        # price type and price value if present
+        try:
+            idx_price_type = header.index('ShopPriceType')
+        except Exception:
+            idx_price_type = None
+        try:
+            idx_price = header.index('SysPrice')
+        except Exception:
+            idx_price = None
+        le_price_type = QLineEdit(row[idx_price_type] if idx_price_type is not None and idx_price_type < len(row) else '')
+        le_price = QLineEdit(row[idx_price] if idx_price is not None and idx_price < len(row) else '')
+        price_layout.addWidget(QLabel('Price Type:'))
+        price_layout.addWidget(le_price_type)
+        price_layout.addWidget(QLabel('Price:'))
+        price_layout.addWidget(le_price)
+        v_price.addLayout(price_layout)
 
-        def save_item():
-            # update fields back into row: name, tip, and mapped attributes
-            # name is header index 9
+        # Tip/Description box
+        tip_box = QTextEdit()
+        tip_box.setPlainText(row[92] if len(row) > 92 else '')
+        tip_box.setFixedHeight(140)
+        v_price.addWidget(QLabel('Tip:'))
+        v_price.addWidget(tip_box)
+        gp_price.setLayout(v_price)
+        right_v.addWidget(gp_price)
+
+        # Restrict Class - many checkboxes in scroll area
+        gp_restrict = QGroupBox('Restrict Class')
+        grid_rc = QGridLayout()
+        class_names = ['Novice','Fighter','Warrior','Berserker','Warlord','Templar','Paladin',
+                       'Ranger','Archer','Sniper','Assassin','Hunter','Sharpshooter','Blademaster',
+                       'Priest','Cleric','Sage','Prophet','Druid','Shaman','Mage','Wizard','Necromancer']
+        chboxes = {}
+        r = 0
+        c = 0
+        for i, cname in enumerate(class_names):
+            cb = QCheckBox(cname)
+            chboxes[cname] = cb
+            grid_rc.addWidget(cb, r, c)
+            c += 1
+            if c >= 4:
+                c = 0
+                r += 1
+        gp_restrict.setLayout(grid_rc)
+        right_v.addWidget(gp_restrict)
+
+        # Restrict Use checkboxes
+        gp_use = QGroupBox('Restrict Use')
+        grid_use = QGridLayout()
+        use_flags = ['Unusable','Combinable','BindOnEquip','ForDeadPlayer','NoTrade','NoRepair','NoDrop','OnlyEquip']
+        r = 0
+        c = 0
+        use_checks = {}
+        for uf in use_flags:
+            cb = QCheckBox(uf)
+            use_checks[uf] = cb
+            grid_use.addWidget(cb, r, c)
+            c += 1
+            if c >= 4:
+                c = 0
+                r += 1
+        gp_use.setLayout(grid_use)
+        right_v.addWidget(gp_use)
+
+        # Save and Save+Close buttons
+        btn_row = QHBoxLayout()
+        btn_save = QPushButton('Save')
+        btn_save_close = QPushButton('Save and Close')
+        btn_save_disk = QPushButton('Save to Disk')
+        btn_row.addWidget(btn_save)
+        btn_row.addWidget(btn_save_close)
+        btn_row.addWidget(btn_save_disk)
+        btn_row.addStretch()
+        right_v.addLayout(btn_row)
+
+        # Save logic: update row fields from widgets
+        def save_item_local(close_after: bool = False, write_disk: bool = False):
+            # name and tip
             if len(row) <= 9:
                 while len(row) <= 9:
                     row.append('')
             row[9] = name_field.text()
             if len(row) > 92:
-                row[92] = desc.toPlainText()
+                row[92] = tip_box.toPlainText()
             else:
-                # extend to reach index 92
                 while len(row) <= 92:
                     row.append('')
-                row[92] = desc.toPlainText()
-            for idx, widget in widgets.items():
-                v = widget.text()
+                row[92] = tip_box.toPlainText()
+            # main fields
+            for fld, (idx, widget) in widgets.items():
+                if idx is None:
+                    continue
+                val = widget.text()
                 while len(row) <= idx:
                     row.append('')
-                row[idx] = v
-            # refresh table display for this row
+                row[idx] = val
+            # class flags (store as a simple CSV in ExtraData1/ExtraData2 etc or skip)
+            # just refresh table view
             for col in range(self.table.columnCount()):
                 val = row[col] if col < len(row) else ''
                 self.table.setItem(index, col, QTableWidgetItem(val))
-            QMessageBox.information(self, 'Saved', 'Item updated in table (not yet written to disk)')
+            if write_disk:
+                # call save_file to write current table to disk
+                try:
+                    self.save_file()
+                except Exception:
+                    pass
+            if close_after:
+                # restore table panel
+                try:
+                    self._show_rows_in_table_panel(header, self.rows)
+                except Exception:
+                    pass
+            else:
+                QMessageBox.information(self, 'Saved', 'Changes saved to table (not written to disk)')
 
-        btn_save.clicked.connect(save_item)
-        right_v.addWidget(btn_save)
+        btn_save.clicked.connect(lambda: save_item_local(False, False))
+        btn_save_close.clicked.connect(lambda: save_item_local(True, False))
+        btn_save_disk.clicked.connect(lambda: save_item_local(True, True))
 
         main_layout.addLayout(right_v)
 

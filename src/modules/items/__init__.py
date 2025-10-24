@@ -11,5 +11,6 @@ Public symbols:
 from .model import Item
 from .reader import read_items, read_items_pair
 from .writer import write_items_pair
+from .panel import panel_widget
 
-__all__ = ["Item", "read_items", "read_items_pair", "write_items_pair"]
+__all__ = ["Item", "read_items", "read_items_pair", "write_items_pair", "panel_widget"]
