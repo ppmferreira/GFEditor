@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QComboBox, QMessageBox, QSpinBox, QTabWidget,
     QDoubleSpinBox, QTableWidget, QHeaderView, QAbstractItemView, QDialog, QFileDialog
 )
-from PySide6.QtCore import Qt, QCoreApplication
+from PySide6.QtCore import Qt, QCoreApplication, QSettings
 from PySide6.QtGui import QPixmap, QImage
 from pathlib import Path
 import io
@@ -128,6 +128,13 @@ def build_professional_editor(parent, rows, header):
 
     # keep a reference to parent so sub-widgets can access app paths/settings
     state = {'rows': rows, 'header': header, 'index': 0, 'parent': parent}
+
+    # application settings (persist UI preferences like the RestrictClass mode)
+    try:
+        settings = QSettings('GFEditor', 'GFEditor')
+        state['settings'] = settings
+    except Exception:
+        state['settings'] = None
 
     # create a per-run cache directory for converted icons (DDS -> PNG)
     try:
@@ -965,15 +972,18 @@ def create_tab_flags_restrictions(rows, header, state):
     class_layout.addWidget(restrict_input, max(0, r+2), 0, 1, 2)
     tab.restrict_input = restrict_input
 
+    # NOTE: always use server-side class IDs as bit positions for RestrictClass.
+    # The editor will interpret and write RestrictClass using server IDs (CLASS_IDS / ID_TO_CLASS).
+
     class_group.setLayout(class_layout)
     layout.addWidget(class_group)
 
-    # helper to recompute RestrictClass mask from checkboxes
+    # helper to recompute RestrictClass mask from checkboxes (always server-ID based)
     def recompute_restrictclass():
         try:
             checked = [name for name, cb in tab.widgets_classes.items() if cb.isChecked()]
-            val = item_flags.encode_restrict_class(checked)
-            tab.restrict_input.setText(f"0x{val:X} / {val}")
+            mask = item_flags.class_names_to_mask(checked)
+            tab.restrict_input.setText(f"0x{mask:X} / {mask}")
         except Exception:
             pass
 
@@ -981,17 +991,38 @@ def create_tab_flags_restrictions(rows, header, state):
     def apply_restrict_from_input(text):
         try:
             t = str(text).strip()
-            if t.lower().startswith('0x'):
-                v = int(t, 16)
-            elif '/' in t:
-                # format like '0x... / dec'
-                parts = t.split('/')
-                v = int(parts[-1].strip())
+            # Always interpret RestrictClass input as hexadecimal.
+            # Accept '0x..', '0x.. / ..' or plain hex digits (even if they look numeric).
+            if '/' in t:
+                parts = [p.strip() for p in t.split('/')]
+                hex_part = next((p for p in parts if p.lower().startswith('0x')), parts[0])
+                try:
+                    v = int(hex_part, 16)
+                except Exception:
+                    # fallback: try parse entire string as hex (without 0x)
+                    try:
+                        v = int(t.replace('/', '').replace(' ', ''), 16)
+                    except Exception:
+                        v = 0
             else:
-                v = int(t) if t.lstrip('-').isdigit() else 0
-            decoded = item_flags.decode_restrict_class(v)
+                try:
+                    v = int(t, 16)
+                except Exception:
+                    v = 0
+
+            # always decode using server IDs -> map bits to server ID numbers
+            decoded_names = []
+            for bit in range(0, 128):
+                if v & (1 << bit):
+                    name = item_flags.ID_TO_CLASS.get(bit)
+                    if name:
+                        decoded_names.append(name)
             for cname, cb in tab.widgets_classes.items():
-                cb.setChecked(cname in decoded)
+                try:
+                    cb.blockSignals(True)
+                    cb.setChecked(cname in decoded_names)
+                finally:
+                    cb.blockSignals(False)
         except Exception:
             pass
 
@@ -1075,14 +1106,51 @@ def update_tab_flags_restrictions(tab, row, header, state):
     # Update RestrictClass bitmask into class checkboxes (if present in header)
     try:
         idx = header.index('RestrictClass')
-        val = int(row[idx]) if idx < len(row) and str(row[idx]).lstrip('-').isdigit() else 0
-        decoded = item_flags.decode_restrict_class(val)
+        raw_val = row[idx] if idx < len(row) else ''
+        # Always interpret RestrictClass as hexadecimal server-ID bitmask.
+        # Accept formats like '0xHEX', '0xHEX / DEC' or plain hex digits.
+        val = 0
+        try:
+            t = str(raw_val).strip()
+            if not t:
+                val = 0
+            elif '/' in t:
+                parts = [p.strip() for p in t.split('/')]
+                hex_part = next((p for p in parts if p.lower().startswith('0x')), parts[0])
+                try:
+                    val = int(hex_part, 16)
+                except Exception:
+                    try:
+                        val = int(t.replace('/', '').replace(' ', ''), 16)
+                    except Exception:
+                        val = 0
+            else:
+                try:
+                    val = int(t, 16)
+                except Exception:
+                    val = 0
+        except Exception:
+            val = 0
+
+        # decode using server IDs
+        decoded_names = []
+        for bit in range(0, 128):
+            if val & (1 << bit):
+                name = item_flags.ID_TO_CLASS.get(bit)
+                if name:
+                    decoded_names.append(name)
+        # set checkboxes without emitting signals to avoid intermediate recompute
         for cname, cb in tab.widgets_classes.items():
-            cb.setChecked(cname in decoded)
+            try:
+                cb.blockSignals(True)
+                cb.setChecked(cname in decoded_names)
+            finally:
+                cb.blockSignals(False)
+
         # update numeric input if present
         try:
-            if hasattr(tab, 'restrict_input') and tab.restrict_input is not None:
-                tab.restrict_input.setText(f"0x{val:X} / {val}")
+                if hasattr(tab, 'restrict_input') and tab.restrict_input is not None:
+                    tab.restrict_input.setText(f"0x{val:X} / {val}")
         except Exception:
             pass
     except Exception:
@@ -1126,8 +1194,10 @@ def save_tab_flags_restrictions(tab, row, header):
         while len(row) <= idx:
             row.append('')
         checked = [name for name, cb in tab.widgets_classes.items() if cb.isChecked()]
-        mask = item_flags.encode_restrict_class(checked)
-        row[idx] = str(mask)
+        # always save using server-class-ID positions
+        mask = item_flags.class_names_to_mask(checked)
+        # write canonical form: hex / decimal so it's explicit and round-trippable
+        row[idx] = f"0x{mask:X} / {mask}"
     except Exception:
         pass
 

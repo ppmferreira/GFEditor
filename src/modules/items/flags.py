@@ -376,3 +376,77 @@ def get_item_type_name(value: int) -> str:
 def get_item_type_value(name: str) -> int:
     """Get item type value from name."""
     return ITEM_TYPE_REV.get(name, 0)
+
+
+def ids_to_hex(ids) -> str:
+    """Convert an iterable of bit positions (0..127) into a compact hex string.
+
+    Mirrors the C++ example provided: sets bit i for each id in ids and
+    returns the hex digits (lowercase) without leading zeros. Returns '0'
+    when no bits are set.
+    """
+    n = 0
+    for i in ids:
+        try:
+            ii = int(i)
+        except Exception:
+            continue
+        if 0 <= ii < 128:
+            n |= (1 << ii)
+    if n == 0:
+        return '0'
+    return format(n, 'x')
+
+
+def hex_to_ids(hexstr: str):
+    """Convert a hex mask (string) back to a sorted list of bit positions set.
+
+    Accepts strings with or without 0x prefix. Returns list[int].
+    """
+    if not hexstr:
+        return []
+    s = str(hexstr).strip().lower()
+    if s.startswith('0x'):
+        s = s[2:]
+    try:
+        n = int(s, 16)
+    except Exception:
+        return []
+    out = []
+    pos = 0
+    while n:
+        if n & 1:
+            out.append(pos)
+        n >>= 1
+        pos += 1
+    return out
+
+
+def class_names_to_hex(class_names) -> str:
+    """Given an iterable of class names (as used in `CLASS_IDS`),
+    produce a hex mask where the server class ID numbers are used as bit positions.
+
+    Example: class_names_to_hex(['SomeClass']) -> hex where bit at CLASS_IDS['SomeClass'] is set.
+    """
+    ids = []
+    for cname in class_names:
+        cid = CLASS_IDS.get(cname)
+        if cid is not None:
+            ids.append(cid)
+    return ids_to_hex(ids)
+
+
+def class_names_to_mask(class_names) -> int:
+    """Return integer mask using server-class-ID positions for given class names."""
+    n = 0
+    for cname in class_names:
+        cid = CLASS_IDS.get(cname)
+        if cid is None:
+            # try if cname is numeric string
+            try:
+                cid = int(cname)
+            except Exception:
+                cid = None
+        if cid is not None and 0 <= cid < 128:
+            n |= (1 << cid)
+    return n
