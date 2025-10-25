@@ -15,6 +15,7 @@ import shutil
 import tempfile
 import gfio
 from . import flags as item_flags
+from . import translate as item_translate
 import re
 
 
@@ -202,7 +203,7 @@ def build_professional_editor(parent, rows, header, source_base=None):
     tabs.addTab(tab_advanced, "Advanced")
 
     # TAB 6: TRANSLATE
-    tab_translate = create_tab_translate(rows, header, state)
+    tab_translate = item_translate.create_tab_translate(rows, header, state)
     tabs.addTab(tab_translate, "Translate")
 
     # (Removed Other/Raw tab - raw fields are no longer shown in a separate tab)
@@ -238,7 +239,7 @@ def build_professional_editor(parent, rows, header, source_base=None):
         update_tab_advanced(tab_advanced, rows[idx], header, state)
         # Update translate tab (shows name/description from Assets/Translate)
         try:
-            update_tab_translate(tab_translate, rows[idx], header, state)
+            item_translate.update_tab_translate(tab_translate, rows[idx], header, state)
         except Exception:
             pass
 
@@ -1307,108 +1308,6 @@ def update_tab_advanced(tab, row, header, state):
             val = row[idx] if idx < len(row) else '0'
             widget.setValue(int(val) if val.isdigit() else 0)
         except:
-            pass
-
-
-def create_tab_translate(rows, header, state):
-    tab = QWidget()
-    layout = QVBoxLayout()
-
-    # Show translation name and description (read-only viewer)
-    tab.trans_name = QLineEdit()
-    tab.trans_name.setReadOnly(True)
-    tab.trans_desc = QTextEdit()
-    tab.trans_desc.setReadOnly(True)
-    tab.trans_desc.setMinimumHeight(180)
-
-    layout.addWidget(QLabel('<b>Translation Name</b>'))
-    layout.addWidget(tab.trans_name)
-    layout.addWidget(QLabel('<b>Translation Description</b>'))
-    layout.addWidget(tab.trans_desc)
-
-    tab.setLayout(layout)
-    return tab
-
-
-def update_tab_translate(tab, row, header, state):
-    # determine id (use first column if available)
-    try:
-        item_id = None
-        if len(row) > 0:
-            item_id = str(row[0]).strip()
-        if not item_id:
-            tab.trans_name.setText('')
-            tab.trans_desc.setPlainText('')
-            return
-
-        # decide which translate file to use based on source_base
-        source = state.get('source_base') or ''
-        src_lower = str(source).lower()
-        translate_name = 'T_Item.ini'
-        if 'itemmall' in src_lower or 'item_mall' in src_lower:
-            translate_name = 'T_ItemMall.ini'
-
-        # prepare cache in state
-        cache = state.setdefault('translate_cache', {})
-        trans_map = cache.get(translate_name)
-        if trans_map is None:
-            trans_map = {}
-            try:
-                lib_base = Path(getattr(state.get('parent'), 'lib_path', Path.cwd() / 'Assets'))
-                tpath = lib_base / 'Translate' / translate_name
-                if tpath.exists():
-                    # Support entries where the description may span multiple physical lines.
-                    # Each entry starts with a line that begins with <ID>| and subsequent
-                    # lines that do not start with <digits>| are considered a continuation
-                    # of the description.
-                    with open(tpath, 'r', encoding='utf-8', errors='ignore') as fh:
-                        current_id = None
-                        current_name = ''
-                        current_desc_lines = []
-                        for raw in fh:
-                            line = raw.rstrip('\n')
-                            if not line:
-                                # preserve blank lines as part of description if we are inside a record
-                                if current_id is not None:
-                                    current_desc_lines.append('')
-                                continue
-
-                            m = re.match(r'^\s*(\d+)\|', line)
-                            if m:
-                                # commit previous record
-                                if current_id is not None:
-                                    trans_map[current_id] = (current_name, '\n'.join(current_desc_lines).strip())
-                                # start new record
-                                parts = line.split('|')
-                                current_id = parts[0]
-                                current_name = parts[1] if len(parts) >= 2 else ''
-                                # join remaining parts as the first piece of description (may be empty)
-                                desc_part = '|'.join(parts[2:]) if len(parts) >= 3 else ''
-                                current_desc_lines = [desc_part] if desc_part else []
-                            else:
-                                # continuation of description
-                                if current_id is not None:
-                                    current_desc_lines.append(line)
-                        # commit last record
-                        if current_id is not None:
-                            trans_map[current_id] = (current_name, '\n'.join(current_desc_lines).strip())
-            except Exception:
-                trans_map = {}
-            cache[translate_name] = trans_map
-
-        # lookup
-        name, desc = trans_map.get(item_id, (None, None))
-        if name is None:
-            tab.trans_name.setText(f'-- no translation for id {item_id} in {translate_name} --')
-            tab.trans_desc.setPlainText('')
-        else:
-            tab.trans_name.setText(name)
-            tab.trans_desc.setPlainText(desc)
-    except Exception:
-        try:
-            tab.trans_name.setText('')
-            tab.trans_desc.setPlainText('')
-        except Exception:
             pass
 
 
