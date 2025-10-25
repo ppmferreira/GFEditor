@@ -81,7 +81,7 @@
 
 ## Pipes Order
 
-``Id,  IconFilename,  ModelId,  ModelFilename,  WeaponEffectId,  FlyEffectId,  UsedEffectId,  UsedSoundName,  EnhanceEffectId,  Name,  ItemType,  EquipType,  OpFlags,  OpFlagsPlus,  Target,  RestrictGender,  RestrictLevel,  RestrictMaxLevel,  RebirthCount,  RebirthScore,  RebirthMaxScore,  RestrictAlign,  RestrictPrestige,  RestrictClass,  ItemQuality,  ItemGroup,  CastingTime,  CoolDownTime,  CoolDownGroup,  MaxHp,  MaxMp,  Str,  Con,  Int,  Vol,  Dex,  AvgPhysicoDamage,  RandPhysicoDamage,  AttackRange,  AttackSpeed,  Attack,  RangeAttack,  PhysicoDefence,  MagicDamage,  MagicDefence,  HitRate,  DodgeRate,  PhysicoCriticalRate,  PhysicoCriticalDamage,  MagicCriticalRate,  MagicCriticalDamage,  PhysicalPenetration,  MagicalPenetration,  PhysicalPenetrationDefence,  MagicalPenetrationDefence,  Attribute,  AttributeRate,  AttributeDamage,  AttributeResist,  SpecialType,  SpecialRate,  SpecialDamage,  DropRate,  DropIndex,  TreasureBuffs,  TreasureBuffs,  TreasureBuffs,  TreasureBuffs,  EnchantType,  EnchantId,  ExpertLevel,  ExpertEnchantId,  ElfSkillId,  EnchantTimeType,  EnchantDuration,  LimitType,  DueDateTime,  BackpackSize,  MaxSocket,  SocketRate,  MaxDurability,  MaxStack,  ShopPriceType,  SysPrice,  RestrictEventPosId,  MissionPosId,  BlockRate,  LogLevel,  AuctionType,  ExtraData,  ExtraData,  ExtraData,  Tip``
+``Id,  IconFilename,  ModelId,  ModelFilename,  WeaponEffectId,  FlyEffectId,  UsedEffectId,  UsedSoundName,  EnhanceEffectId,  Name,  ItemType,  EquipType,  OpFlags,  OpFlagsPlus,  Target,  RestrictGender,  RestrictLevel,  RestrictMaxLevel,  RebirthCount,  RebirthScore,  RebirthMaxScore,  RestrictAlign,  RestrictPrestige,  RestrictClass,  ItemQuality,  ItemGroup,  CastingTime,  CoolDownTime,  CoolDownGroup,  MaxHp,  MaxMp,  Str,  Vit,  Int,  Von,  Agi,  AvgPhysicoDamage,  RandPhysicoDamage,  AttackRange,  AttackSpeed,  Attack,  RangeAttack,  PhysicoDefence,  MagicDamage,  MagicDefence,  HitRate,  DodgeRate,  PhysicoCriticalRate,  PhysicoCriticalDamage,  MagicCriticalRate,  MagicCriticalDamage,  PhysicalPenetration,  MagicalPenetration,  PhysicalPenetrationDefence,  MagicalPenetrationDefence,  Attribute,  AttributeRate,  AttributeDamage,  AttributeResist,  SpecialType,  SpecialRate,  SpecialDamage,  DropRate,  DropIndex,  TreasureBuffs,  TreasureBuffs,  TreasureBuffs,  TreasureBuffs,  EnchantType,  EnchantId,  ExpertLevel,  ExpertEnchantId,  ElfSkillId,  EnchantTimeType,  EnchantDuration,  LimitType,  DueDateTime,  BackpackSize,  MaxSocket,  SocketRate,  MaxDurability,  MaxStack,  ShopPriceType,  SysPrice,  RestrictEventPosId,  MissionPosId,  BlockRate,  LogLevel,  AuctionType,  ExtraData,  ExtraData,  ExtraData,  Tip``
 
 ## **Flags**
 
@@ -121,7 +121,6 @@ NoInField          = 134217728,
 NoTransNode        = 268435456,
 UnBindItem         = 536870912
 ```
-
 
 **Flags**
 

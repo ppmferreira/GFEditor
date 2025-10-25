@@ -6,9 +6,13 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QComboBox, QMessageBox, QSpinBox, QTabWidget,
     QDoubleSpinBox, QTableWidget, QHeaderView, QAbstractItemView, QDialog, QFileDialog
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtGui import QPixmap, QImage
 from pathlib import Path
+import io
+import subprocess
+import shutil
+import tempfile
 import gfio
 from . import flags as item_flags
 
@@ -125,6 +129,20 @@ def build_professional_editor(parent, rows, header):
     # keep a reference to parent so sub-widgets can access app paths/settings
     state = {'rows': rows, 'header': header, 'index': 0, 'parent': parent}
 
+    # create a per-run cache directory for converted icons (DDS -> PNG)
+    try:
+        icon_cache_dir = Path(tempfile.mkdtemp(prefix='gfeditor_icons_'))
+        state['icon_cache_dir'] = str(icon_cache_dir)
+        app = QCoreApplication.instance()
+        if app is not None:
+            # remove cache when application quits
+            try:
+                app.aboutToQuit.connect(lambda: shutil.rmtree(icon_cache_dir, ignore_errors=True))
+            except Exception:
+                pass
+    except Exception:
+        state['icon_cache_dir'] = None
+
     # ============= TOP CONTROLS =============
     ctrl_row = QHBoxLayout()
     selector = QComboBox()
@@ -175,9 +193,7 @@ def build_professional_editor(parent, rows, header):
     tab_advanced = create_tab_advanced(rows, header, state)
     tabs.addTab(tab_advanced, "Advanced")
 
-    # TAB 6: RAW / OTHER - generate widgets for any header fields not covered above
-    tab_raw = create_tab_raw(rows, header, state)
-    tabs.addTab(tab_raw, "Other / Raw")
+    # (Removed Other/Raw tab - raw fields are no longer shown in a separate tab)
 
     main_layout.addWidget(tabs)
 
@@ -208,7 +224,6 @@ def build_professional_editor(parent, rows, header):
         update_tab_flags_restrictions(tab_flags, rows[idx], header, state)
         update_tab_enchant_special(tab_enchant, rows[idx], header, state)
         update_tab_advanced(tab_advanced, rows[idx], header, state)
-        update_tab_raw(tab_raw, rows[idx], header, state)
 
     def save_current(close_after=False, write_disk=False):
         idx = state['index']
@@ -222,7 +237,6 @@ def build_professional_editor(parent, rows, header):
         save_tab_flags_restrictions(tab_flags, r, header)
         save_tab_enchant_special(tab_enchant, r, header)
         save_tab_advanced(tab_advanced, r, header)
-        save_tab_raw(tab_raw, r, header)
 
         # Update parent table
         try:
@@ -340,6 +354,7 @@ def create_tab_basic(rows, header, state):
         'ItemQuality': ('Quality', QComboBox()),
         'Target': ('Target', QComboBox()),
         'MaxStack': ('Max Stack', QSpinBox()),
+        'ShopPriceType': ('Shop Price Type', QSpinBox()),
         'SysPrice': ('Sys Price', QSpinBox()),
         'WeaponEffectId': ('Weapon Effect ID', QSpinBox()),
         'FlyEffectId': ('Fly Effect ID', QSpinBox()),
@@ -443,9 +458,29 @@ def update_tab_basic(tab, row, header, state):
                                     icon_path = p2
                                     break
 
-                # if we found a candidate file, try to load it; prefer QPixmap, but use Pillow for DDS or other unsupported formats
+                # if we found a candidate file, try to load it; prefer QPixmap, but use Pillow or external tools for DDS
                 if icon_path and icon_path.exists():
                     loaded = False
+                    # prepare cache path (use mtime to invalidate when file changes)
+                    cache_png = None
+                    try:
+                        cache_root = state.get('icon_cache_dir')
+                        if cache_root:
+                            cache_root = Path(cache_root)
+                            cache_png = cache_root / f"{icon_path.stem}_{icon_path.stat().st_mtime_ns}.png"
+                    except Exception:
+                        cache_png = None
+
+                    # if cached PNG exists, load it quickly
+                    if cache_png is not None and cache_png.exists():
+                        try:
+                            pix = QPixmap(str(cache_png))
+                            if not pix.isNull():
+                                tab.icon_label.setPixmap(pix.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                                tab.icon_label.setToolTip(str(cache_png))
+                                loaded = True
+                        except Exception:
+                            loaded = False
                     try:
                         pix = QPixmap(str(icon_path))
                         if not pix.isNull():
@@ -475,16 +510,102 @@ def update_tab_basic(tab, row, header, state):
                                     qimg = QImage(data, w, h, QImage.Format_ARGB32)
                             pix2 = QPixmap.fromImage(qimg)
                             if not pix2.isNull():
+                                # save converted PNG to cache if available
+                                try:
+                                    if cache_png is not None:
+                                        im.save(str(cache_png), format='PNG')
+                                        tab.icon_label.setToolTip(str(cache_png))
+                                    else:
+                                        tab.icon_label.setToolTip(str(icon_path))
+                                except Exception:
+                                    tab.icon_label.setToolTip(str(icon_path))
                                 tab.icon_label.setPixmap(pix2.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                                tab.icon_label.setToolTip(str(icon_path))
                                 loaded = True
                         except Exception:
                             loaded = False
+                            # Pillow failed to open (likely DDS unsupported). Try external converters if present.
+                            try:
+                                # Prefer ImageMagick 'magick' which can output PNG to stdout
+                                magick = shutil.which('magick')
+                                if magick:
+                                    # write direct to cache_png when possible
+                                    if cache_png is not None:
+                                        try:
+                                            subprocess.run([magick, str(icon_path), str(cache_png)], check=True)
+                                            if cache_png.exists():
+                                                pix2 = QPixmap(str(cache_png))
+                                                if not pix2.isNull():
+                                                    tab.icon_label.setPixmap(pix2.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                                                    tab.icon_label.setToolTip(str(cache_png) + ' (converted via magick)')
+                                                    loaded = True
+                                        except Exception:
+                                            loaded = False
+                                    else:
+                                        proc = subprocess.run([magick, str(icon_path), 'png:-'], capture_output=True, check=True)
+                                        if proc.stdout:
+                                            from PIL import Image
+                                            im = Image.open(io.BytesIO(proc.stdout))
+                                            im = im.convert('RGBA')
+                                            w, h = im.size
+                                            data = im.tobytes('raw', 'RGBA')
+                                            try:
+                                                qimg = QImage(data, w, h, QImage.Format_RGBA8888)
+                                            except Exception:
+                                                qimg = QImage(data, w, h, QImage.Format_ARGB32)
+                                            pix2 = QPixmap.fromImage(qimg)
+                                            if not pix2.isNull():
+                                                tab.icon_label.setPixmap(pix2.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                                                tab.icon_label.setToolTip(str(icon_path) + ' (converted via magick)')
+                                                loaded = True
+                                # fallback to texconv (DirectXTex) if available
+                                if not loaded:
+                                    texconv = shutil.which('texconv')
+                                    if texconv:
+                                        tmpd = tempfile.mkdtemp(prefix='gfeditor_texconv_')
+                                        try:
+                                            # texconv will write PNG(s) to the output dir; if cache available, use it
+                                            out_dir = tmpd
+                                            if cache_png is not None:
+                                                out_dir = str(cache_root)
+                                            subprocess.run([texconv, '-ft', 'PNG', '-o', out_dir, str(icon_path)], check=True)
+                                            pngs = list(Path(out_dir).glob('*.png'))
+                                            if pngs:
+                                                first_png = pngs[0]
+                                                # if using tmpd, move to cache name
+                                                target_png = cache_png if (cache_png is not None) else first_png
+                                                if cache_png is not None and str(first_png) != str(cache_png):
+                                                    try:
+                                                        shutil.move(str(first_png), str(cache_png))
+                                                        first_png = cache_png
+                                                    except Exception:
+                                                        pass
+                                                from PIL import Image
+                                                im = Image.open(str(first_png))
+                                                im = im.convert('RGBA')
+                                                w, h = im.size
+                                                data = im.tobytes('raw', 'RGBA')
+                                                try:
+                                                    qimg = QImage(data, w, h, QImage.Format_RGBA8888)
+                                                except Exception:
+                                                    qimg = QImage(data, w, h, QImage.Format_ARGB32)
+                                                pix2 = QPixmap.fromImage(qimg)
+                                                if not pix2.isNull():
+                                                    tab.icon_label.setPixmap(pix2.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                                                    tab.icon_label.setToolTip(str(first_png) + ' (converted via texconv)')
+                                                    loaded = True
+                                        finally:
+                                            try:
+                                                shutil.rmtree(tmpd)
+                                            except Exception:
+                                                pass
+                            except Exception:
+                                # external conversion failed — keep loaded = False
+                                loaded = False
 
                     if not loaded:
                         # cannot load — clear preview and hint to user about Pillow requirement
                         tab.icon_label.setPixmap(QPixmap())
-                        tab.icon_label.setToolTip('Ícone não encontrado ou formato não suportado. Para DDS instale Pillow + plugin DDS (ex: pillow-dds).')
+                        tab.icon_label.setToolTip('Icone nao encontrado ou formato nao suportado. Para DDS instale Pillow + plugin DDS (ex: pillow-dds).')
                 else:
                     # clear pixmap if not found or no name provided
                     tab.icon_label.setPixmap(QPixmap())
@@ -522,36 +643,152 @@ def save_tab_basic(tab, row, header):
 # ============= TAB 2: PARAMETERS =============
 def create_tab_parameters(rows, header, state):
     tab = QWidget()
-    layout = QGridLayout()
 
-    params = {
-        'MaxHp': 'Max HP', 'MaxMp': 'Max MP',
-        'Str': 'STR', 'Con': 'CON', 'Int': 'INT', 'Vol': 'VOL', 'Dex': 'DEX',
-        'Attack': 'Attack', 'RangeAttack': 'Range Attack',
-        'AvgPhysicoDamage': 'Avg Physico Damage', 'RandPhysicoDamage': 'Rand Physico Damage',
-        'PhysicoDefence': 'Physico Defence', 'MagicDefence': 'Magic Defence',
-        'HitRate': 'Hit Rate', 'DodgeRate': 'Dodge Rate',
-        'PhysicoCriticalRate': 'Physico Critical Rate', 'PhysicoCriticalDamage': 'Physico Critical Damage',
-        'MagicCriticalRate': 'Magic Critical Rate', 'MagicCriticalDamage': 'Magic Critical Damage',
-        'AttackSpeed': 'Attack Speed', 'AttackRange': 'Attack Range',
-        'CastingTime': 'Casting Time', 'CoolDownTime': 'Cool Down Time',
-    }
+    # We'll split parameters into logical groups to improve readability
+    # Left column groups: Primary Stats, Combat
+    # Right column groups: Defense, Timing, Misc
+    left_col = QVBoxLayout()
+    right_col = QVBoxLayout()
 
     tab.widgets_params = {}
-    row_idx = 0
-    col_idx = 0
-    
-    for key, label in params.items():
+
+    # Primary Stats
+    primary = QGroupBox('Primary Stats')
+    pl = QFormLayout()
+    primary_fields = {
+        'MaxHp': 'Max HP', 'MaxMp': 'Max MP',
+        'Str': 'STR', 'Vit': 'VIT', 'Int': 'INT', 'Von': 'VON', 'Agi': 'AGI', 'MaxDurability': 'Max Durability',
+    }
+    for key, label in primary_fields.items():
         widget = QSpinBox()
         widget.setMaximum(999999)
         tab.widgets_params[key] = widget
-        layout.addWidget(QLabel(label + ':'), row_idx, col_idx)
-        layout.addWidget(widget, row_idx, col_idx + 1)
-        col_idx += 2
-        if col_idx >= 4:
-            col_idx = 0
-            row_idx += 1
+        pl.addRow(label + ':', widget)
+    primary.setLayout(pl)
+    left_col.addWidget(primary)
 
+    # Combat related fields
+    combat = QGroupBox('Combat')
+    cl = QFormLayout()
+    combat_fields = {
+        'Attack': 'Attack','MagicDamage': 'Magic Damage', 'RangeAttack': 'Range Attack', 'AttackSpeed': 'Attack Speed',
+        'AttackRange': 'Attack Range', 'AvgPhysicoDamage': 'Avg Physico Damage', 'RandPhysicoDamage': 'Rand Physico Damage',
+        'PhysicoCriticalRate': 'Physico Critical Rate', 'PhysicoCriticalDamage': 'Physico Critical Damage',
+        'MagicCriticalRate': 'Magic Critical Rate', 'MagicCriticalDamage': 'Magic Critical Damage'
+    }
+    for key, label in combat_fields.items():
+        widget = QSpinBox()
+        widget.setMaximum(999999)
+        tab.widgets_params[key] = widget
+        cl.addRow(label + ':', widget)
+    combat.setLayout(cl)
+    left_col.addWidget(combat)
+
+    # Defense related fields
+    defense = QGroupBox('Defense / Evasion')
+    dl = QFormLayout()
+    defense_fields = {
+        'PhysicoDefence': 'Physico Defence', 'MagicDefence': 'Magic Defence',
+        'HitRate': 'Hit Rate', 'DodgeRate': 'Dodge Rate'
+    }
+    for key, label in defense_fields.items():
+        widget = QSpinBox()
+        widget.setMaximum(999999)
+        tab.widgets_params[key] = widget
+        dl.addRow(label + ':', widget)
+    defense.setLayout(dl)
+    right_col.addWidget(defense)
+
+    # Timing / Casting
+    timing = QGroupBox('Casting & Cooldowns')
+    tl = QFormLayout()
+    timing_fields = {
+        'CastingTime': 'Casting Time', 'CoolDownTime': 'Cool Down Time'
+    }
+    for key, label in timing_fields.items():
+        widget = QSpinBox()
+        widget.setMaximum(999999)
+        tab.widgets_params[key] = widget
+        tl.addRow(label + ':', widget)
+    timing.setLayout(tl)
+    right_col.addWidget(timing)
+
+    # Misc / Other
+    misc = QGroupBox('Misc')
+    ml = QFormLayout()
+    misc_fields = {
+        'WeaponEffectId': 'Weapon Effect ID', 'FlyEffectId': 'Fly Effect ID',
+        'ElfSkillId': 'Elf Skill ID', 'BackpackSize': 'Backpack Size', 'LimitType': 'Limit Type',
+        'EquipType': 'Equip Type', 'ItemGroup': 'Item Group','MaxStack': 'Max Stack'
+    }
+    for key, label in misc_fields.items():
+        widget = QSpinBox()
+        widget.setMaximum(999999)
+        tab.widgets_params[key] = widget
+        ml.addRow(label + ':', widget)
+    misc.setLayout(ml)
+    right_col.addWidget(misc)
+
+    # Model & Effects
+    visual = QGroupBox('Visual / Effects')
+    visl = QFormLayout()
+    visual_fields = {
+        'ModelId': 'Model ID', 'ModelFilename': 'Model File', 'UsedEffectId': 'Used Effect ID',
+        'UsedSoundName': 'Used Sound', 'EnhanceEffectId': 'Enhance Effect ID'
+    }
+    for key, label in visual_fields.items():
+        # ModelId is an alphanumeric code (e.g. 'A10072') — use QLineEdit.
+        # filenames and names use QLineEdit as well; numeric ids use QSpinBox.
+        if key == 'ModelId' or 'File' in label or 'Sound' in label:
+            w = QLineEdit()
+        else:
+            w = QSpinBox()
+            w.setMaximum(999999)
+        tab.widgets_params[key] = w
+        visl.addRow(label + ':', w)
+    visual.setLayout(visl)
+    right_col.addWidget(visual)
+
+    # Penetration & Extra Damage
+    pen = QGroupBox('Penetration / Extra Damage')
+    penl = QFormLayout()
+    pen_fields = {
+        'PhysicalPenetration': 'Physical Penetration',
+        'MagicPenetration': 'Magical Penetration', 'PhysicalPenetrationDefence': 'Physical Penetration Defence',
+        'MagicPenetrationDefence': 'Magical Penetration Defence', 'AttributeResist': 'Attribute Resist'
+    }
+    for key, label in pen_fields.items():
+        widget = QSpinBox()
+        widget.setMaximum(999999)
+        tab.widgets_params[key] = widget
+        penl.addRow(label + ':', widget)
+    pen.setLayout(penl)
+    right_col.addWidget(pen)
+
+    # Meta / Grouping
+    meta = QGroupBox('Meta / Grouping')
+    ml2 = QFormLayout()
+    meta_fields = {
+        'CoolDownGroup': 'Cool Down Group', 'RebirthCount': 'Rebirth Count', 'RebirthScore': 'Rebirth Score',
+        'RebirthMaxScore': 'Rebirth Max Score', 'DueDateTime': 'Due Date/Time', 'ExtraData1': 'Extra Data 1',
+        'ExtraData2': 'Extra Data 2', 'ExtraData3': 'Extra Data 3'
+    }
+    for key, label in meta_fields.items():
+        # DueDateTime and ExtraData may be text
+        if 'Due' in label or 'Extra Data' in label:
+            w = QLineEdit()
+        else:
+            w = QSpinBox()
+            w.setMaximum(999999)
+        tab.widgets_params[key] = w
+        ml2.addRow(label + ':', w)
+    meta.setLayout(ml2)
+    right_col.addWidget(meta)
+
+    # Assemble two columns
+    layout = QHBoxLayout()
+    layout.addLayout(left_col)
+    layout.addLayout(right_col)
     tab.setLayout(layout)
     return tab
 
@@ -560,9 +797,18 @@ def update_tab_parameters(tab, row, header, state):
     for key, widget in tab.widgets_params.items():
         try:
             idx = header.index(key)
-            val = row[idx] if idx < len(row) else '0'
-            widget.setValue(int(val) if val.isdigit() else 0)
-        except:
+            val = row[idx] if idx < len(row) else ''
+            # support both numeric spinboxes and line edits
+            if isinstance(widget, QSpinBox):
+                widget.setValue(int(val) if str(val).lstrip('-').isdigit() else 0)
+            elif isinstance(widget, QLineEdit):
+                widget.setText(str(val))
+            else:
+                try:
+                    widget.setValue(int(val))
+                except Exception:
+                    pass
+        except Exception:
             pass
 
 
@@ -572,8 +818,16 @@ def save_tab_parameters(tab, row, header):
             idx = header.index(key)
             while len(row) <= idx:
                 row.append('')
-            row[idx] = str(widget.value())
-        except:
+            if isinstance(widget, QSpinBox):
+                row[idx] = str(widget.value())
+            elif isinstance(widget, QLineEdit):
+                row[idx] = widget.text()
+            else:
+                try:
+                    row[idx] = str(widget.value())
+                except Exception:
+                    row[idx] = ''
+        except Exception:
             pass
 
 
@@ -944,7 +1198,6 @@ def create_tab_advanced(rows, header, state):
         'DropIndex': ('Drop Index', QSpinBox()),
         'MaxSocket': ('Max Socket', QSpinBox()),
         'SocketRate': ('Socket Rate', QSpinBox()),
-        'MaxDurability': ('Max Durability', QSpinBox()),
         'BackpackSize': ('Backpack Size', QSpinBox()),
         'LimitType': ('Limit Type', QSpinBox()),
         'BlockRate': ('Block Rate', QSpinBox()),
@@ -952,7 +1205,6 @@ def create_tab_advanced(rows, header, state):
         'AuctionType': ('Auction Type', QSpinBox()),
         'RestrictEventPosId': ('Event Pos ID', QSpinBox()),
         'MissionPosId': ('Mission Pos ID', QSpinBox()),
-        'ModelId': ('Model ID', QSpinBox()),
         'WeaponEffectId': ('Weapon Effect', QSpinBox()),
     }
 
@@ -1038,51 +1290,4 @@ def show_search_dialog(rows, on_select):
     dialog.show()
 
 
-# ============= TAB RAW / OTHER HELPERS =============
-def create_tab_raw(rows, header, state):
-    tab = QWidget()
-    layout = QFormLayout()
-
-    # fields that are already present in other tabs (do not duplicate)
-    known_fields = {
-        'Id', 'Name', 'IconFilename', 'ItemType', 'ItemQuality', 'Target', 'MaxStack', 'SysPrice', 'Tip',
-        'MaxHp', 'MaxMp', 'Str', 'Con', 'Int', 'Vol', 'Dex', 'Attack', 'AttackSpeed', 'RangeAttack',
-        'AvgPhysicoDamage', 'RandPhysicoDamage', 'PhysicoDefence', 'MagicDefence', 'HitRate', 'DodgeRate',
-        'PhysicoCriticalRate', 'PhysicoCriticalDamage', 'MagicCriticalRate', 'MagicCriticalDamage', 'AttackRange',
-        'OpFlags', 'OpFlagsPlus', 'RestrictGender', 'RestrictLevel', 'RestrictMaxLevel', 'RestrictAlign', 'RestrictPrestige',
-        'RestrictClass', 'EnchantType', 'EnchantId', 'EnchantTimeType', 'EnchantDuration', 'ExpertLevel', 'ExpertEnchantId',
-        'TreasureBuffs1', 'TreasureBuffs2', 'TreasureBuffs3', 'TreasureBuffs4', 'DropRate', 'DropIndex',
-        'MaxSocket', 'SocketRate', 'MaxDurability'
-    }
-
-    tab.widgets_raw = {}
-    for col_name in header:
-        if col_name in known_fields:
-            continue
-        widget = QLineEdit()
-        layout.addRow(col_name + ':', widget)
-        tab.widgets_raw[col_name] = widget
-
-    tab.setLayout(layout)
-    return tab
-
-
-def update_tab_raw(tab, row, header, state):
-    for key, widget in tab.widgets_raw.items():
-        try:
-            idx = header.index(key)
-            val = row[idx] if idx < len(row) else ''
-            widget.setText(str(val))
-        except Exception:
-            pass
-
-
-def save_tab_raw(tab, row, header):
-    for key, widget in tab.widgets_raw.items():
-        try:
-            idx = header.index(key)
-            while len(row) <= idx:
-                row.append('')
-            row[idx] = widget.text()
-        except Exception:
-            pass
+# Raw/Other tab removed — raw helpers deleted to keep UI focused

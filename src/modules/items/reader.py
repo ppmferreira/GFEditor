@@ -9,7 +9,7 @@ DEFAULT_HEADER = [
     'OpFlags', 'OpFlagsPlus', 'Target', 'RestrictGender', 'RestrictLevel', 'RestrictMaxLevel',
     'RebirthCount', 'RebirthScore', 'RebirthMaxScore', 'RestrictAlign', 'RestrictPrestige',
     'RestrictClass', 'ItemQuality', 'ItemGroup', 'CastingTime', 'CoolDownTime', 'CoolDownGroup',
-    'MaxHp', 'MaxMp', 'Str', 'Con', 'Int', 'Vol', 'Dex', 'AvgPhysicoDamage', 'RandPhysicoDamage',
+    'MaxHp', 'MaxMp', 'Str', 'Vit', 'Int', 'Von', 'Agi', 'AvgPhysicoDamage', 'RandPhysicoDamage',
     'AttackRange', 'AttackSpeed', 'Attack', 'RangeAttack', 'PhysicoDefence', 'MagicDamage',
     'MagicDefence', 'HitRate', 'DodgeRate', 'PhysicoCriticalRate', 'PhysicoCriticalDamage',
     'MagicCriticalRate', 'MagicCriticalDamage', 'PhysicalPenetration', 'MagicalPenetration',
