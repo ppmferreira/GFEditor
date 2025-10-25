@@ -199,7 +199,7 @@ CLASSES = [
     # Sacerdotes (Priest-like)
     'Acolito','Sacerdote','Clerigo','Sabio','Profeta','Mistico','Mensageiro Divino','Xama','Arcanjo','Druida',
     # Magicas (Magic)
-    'Bruxo','Mago','Feiticeiro','Necromante','Arquimago','Demonologo','Arcano','Emissario dos Mortos','Shinigami',
+    'Bruxo(6)','Mago','Feiticeiro','Necromante','Arquimago','Demonologo','Arcano','Emissario dos Mortos','Bruxo(100)','Shinigami',
     # Maquinista (Machinist)
     'Maquinista Aprendiz','Maquinista','Agressor','Demolidor','Prime','Optimus','Megatron','Galvatron','Omega','Titan Celeste',
     # Viajante (Traveler)
@@ -242,13 +242,14 @@ CLASS_IDS = {
     'Arcanjo': 44,
     'Druida': 45,
     # Mágicas
-    'Bruxo': 13,
+    'Bruxo(6)': 13,
     'Mago': 14,
     'Feiticeiro': 15,
     'Necromante': 16,
     'Arquimago': 23,
     'Demonologo': 24,
     'Arcano': 38,
+    'Bruxo(100)': 46,
     'Emissario dos Mortos': 39,
     'Shinigami': 47,
     # Maquinista

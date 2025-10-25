@@ -967,7 +967,7 @@ def create_tab_flags_restrictions(rows, header, state):
     # compute rows used (r currently points to next row)
     class_layout.addWidget(QLabel('RestrictClass Value:'), max(0, r+1), 0, 1, 2)
     restrict_input = QLineEdit()
-    restrict_input.setPlaceholderText('0x... / dec')
+    restrict_input.setPlaceholderText('HEX (sem prefixo 0x)')
     restrict_input.setFixedWidth(220)
     class_layout.addWidget(restrict_input, max(0, r+2), 0, 1, 2)
     tab.restrict_input = restrict_input
@@ -983,7 +983,8 @@ def create_tab_flags_restrictions(rows, header, state):
         try:
             checked = [name for name, cb in tab.widgets_classes.items() if cb.isChecked()]
             mask = item_flags.class_names_to_mask(checked)
-            tab.restrict_input.setText(f"0x{mask:X} / {mask}")
+            # show only the hex digits (sem '0x' e sem decimal)
+            tab.restrict_input.setText(f"{mask:X}")
         except Exception:
             pass
 
@@ -1149,8 +1150,9 @@ def update_tab_flags_restrictions(tab, row, header, state):
 
         # update numeric input if present
         try:
-                if hasattr(tab, 'restrict_input') and tab.restrict_input is not None:
-                    tab.restrict_input.setText(f"0x{val:X} / {val}")
+                    if hasattr(tab, 'restrict_input') and tab.restrict_input is not None:
+                        # display only hex digits (sem '0x' e sem decimal)
+                        tab.restrict_input.setText(f"{val:X}")
         except Exception:
             pass
     except Exception:
