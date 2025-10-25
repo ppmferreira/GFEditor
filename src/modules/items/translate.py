@@ -82,8 +82,8 @@ class TranslateFile:
                     id_ = rec['id']
                     name = rec['name'] or ''
                     desc_lines = rec.get('desc_lines', [])
-                    # sempre escrever os 3 campos separados por pipes
-                    if len(desc_lines) == 0:
+                    # tratar linhas vazias ou com apenas whitespace como ausência de descrição
+                    if not desc_lines or (len(desc_lines) == 1 and desc_lines[0].strip() == ''):
                         fh.write(f"{id_}|{name}||\n")
                     else:
                         first = desc_lines[0]
