@@ -113,6 +113,16 @@ def panel_widget(parent):
 def build_professional_editor(parent, rows, header, source_base=None):
     """Build a professional multi-tab item editor."""
     container = QWidget()
+    # Normalize header: if header doesn't match expected DEFAULT_HEADER length,
+    # prefer the canonical DEFAULT_HEADER to keep field-to-widget mapping stable.
+    try:
+        from . import reader as items_reader
+        expected_len = len(items_reader.DEFAULT_HEADER)
+        if header is None or len(header) != expected_len:
+            header = items_reader.DEFAULT_HEADER.copy()
+    except Exception:
+        # if import fails, leave header as-is
+        pass
     # name the widget so the stylesheet targets only this editor panel
     container.setObjectName('item_panel')
     main_layout = QVBoxLayout()
@@ -176,6 +186,10 @@ def build_professional_editor(parent, rows, header, source_base=None):
     ctrl_row.addWidget(btn_next)
     ctrl_row.addWidget(btn_search)
     ctrl_row.addWidget(btn_csv)
+    # debug/info label to help trace which source was used to build this editor
+    info_label = QLabel('')
+    info_label.setObjectName('item_editor_info')
+    ctrl_row.addWidget(info_label)
     ctrl_row.addStretch()
     main_layout.addLayout(ctrl_row)
 
@@ -339,6 +353,13 @@ def build_professional_editor(parent, rows, header, source_base=None):
     except Exception:
         load_index(0)
 
+    # populate info label with source and row count for debugging/consistency checks
+    try:
+        sb = state.get('source_base') or source_base
+        info_label.setText(f"Source: {sb or 'unknown'}  Rows: {len(rows)}")
+    except Exception:
+        pass
+
     container.setLayout(main_layout)
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
@@ -351,7 +372,7 @@ def create_tab_basic(rows, header, state):
     tab = QWidget()
     layout = QVBoxLayout()
 
-    # Left: Icon preview
+    # Left: Icon preview (wrapped in a widget with fixed width so layout is stable)
     left = QVBoxLayout()
     icon_label = QLabel()
     icon_label.setFixedSize(200, 200)
@@ -360,9 +381,13 @@ def create_tab_basic(rows, header, state):
     left.addWidget(QLabel('<b>Icon Preview</b>'))
     left.addWidget(icon_label)
     left.addStretch()
+    left_widget = QWidget()
+    left_widget.setLayout(left)
+    left_widget.setFixedWidth(240)  # give a bit of padding beyond the icon size
 
-    # Right: Basic fields
+    # Right: Basic fields (wrap QFormLayout in a QWidget so we can control stretch)
     right = QFormLayout()
+    right_widget = QWidget()
     
     fields_basic = {
         'Id': ('ID', QLineEdit()),
@@ -395,10 +420,15 @@ def create_tab_basic(rows, header, state):
         right.addRow(label, widget)
 
     tab.icon_label = icon_label
-    
+
     body = QHBoxLayout()
-    body.addLayout(left)
-    body.addLayout(right)
+    # add the fixed-width left widget and the expanding right widget
+    right_widget.setLayout(right)
+    body.addWidget(left_widget)
+    body.addWidget(right_widget)
+    # ensure right_widget expands and left_widget stays fixed
+    body.setStretch(0, 0)
+    body.setStretch(1, 1)
     layout.addLayout(body)
     layout.addStretch()
     
