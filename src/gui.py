@@ -47,23 +47,34 @@ class MainWindow(QMainWindow):
 
         # UI: left module list, right content area
         self.module_list = QListWidget()
+        # Home como primeiro item selecionável (comportamento igual aos demais módulos)
+        self.module_list.addItem('Home')
         for name, _ in self.modules:
             self.module_list.addItem(name)
         self.module_list.currentRowChanged.connect(self.on_module_changed)
 
         left_panel = QWidget()
         left_layout = QVBoxLayout()
-        home_btn = QPushButton('Home')
-        home_btn.clicked.connect(self.show_intro)
-        left_layout.addWidget(home_btn)
+        # usar apenas a lista (Home está dentro dela)
         left_layout.addWidget(self.module_list)
         left_layout.addStretch()
-        left_panel.setLayout(left_layout)
+    left_panel.setLayout(left_layout)
+    # fixar a largura do painel esquerdo para que não redimensione ao trocar módulos
+    left_panel.setFixedWidth(150)
 
         self.table = QTableWidget()
         self.intro_panel = self.create_intro_panel()
 
-        splitter = QSplitter()
+        # selecionar Home por padrão
+        try:
+            self.module_list.setCurrentRow(0)
+        except Exception:
+            pass
+
+    splitter = QSplitter()
+    # evitar que o painel esquerdo colapse/resize quando inserimos widgets na área direita
+    splitter.setCollapsible(0, False)
+    splitter.setChildrenCollapsible(False)
         splitter.addWidget(left_panel)
         splitter.addWidget(self.intro_panel)
         splitter.setSizes([150, 800])
@@ -121,9 +132,16 @@ class MainWindow(QMainWindow):
 
     def on_module_changed(self, row: int):
         """Load the module panel (calls module's panel_widget) into the right area."""
-        if row < 0 or row >= len(self.modules):
+        if row < 0:
             return
-        module_path = self.modules[row][1]
+        # row 0 == Home
+        if row == 0:
+            self.show_intro()
+            return
+        idx = row - 1
+        if idx < 0 or idx >= len(self.modules):
+            return
+        module_path = self.modules[idx][1]
         try:
             mod = __import__(module_path, fromlist=['panel_widget'])
         except Exception:

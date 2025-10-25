@@ -31,7 +31,13 @@ class TranslateFile:
                     parts = line.split('|')
                     current_id = parts[0]
                     current_name = parts[1] if len(parts) >= 2 else ''
-                    desc_part = '|'.join(parts[2:]) if len(parts) >= 3 else ''
+                    # partes da descrição (tudo após o segundo pipe)
+                    desc_parts = parts[2:] if len(parts) >= 3 else []
+                    # se todas as partes de descrição estiverem vazias => descrição vazia
+                    if len(desc_parts) == 0 or all(p == '' for p in desc_parts):
+                        desc_part = ''
+                    else:
+                        desc_part = '|'.join(desc_parts)
                     current_desc_lines = [desc_part] if desc_part != '' else []
                 else:
                     if not seen:
@@ -87,7 +93,8 @@ class TranslateFile:
                         fh.write(f"{id_}|{name}||\n")
                     else:
                         first = desc_lines[0]
-                        fh.write(f"{id_}|{name}|{first}\n")
+                        # sempre terminar a primeira linha com pipe final
+                        fh.write(f"{id_}|{name}|{first}|\n")
                         for extra in desc_lines[1:]:
                             fh.write(extra + '\n')
             shutil.move(tmp_path, str(self.path))
