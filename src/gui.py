@@ -28,7 +28,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('GF Editor - Prototype')
+        self.setWindowTitle('GF Editor v.751- Developed By Fuleco')
 
         # runtime state
         self.lib_path = self.find_lib()
@@ -72,11 +72,17 @@ class MainWindow(QMainWindow):
             pass
 
         splitter = QSplitter()
-    # evitar que o painel esquerdo colapse/resize quando inserimos widgets na área direita
-        splitter.setCollapsible(0, False)
+        # evitar que o painel esquerdo colapse/resize quando inserimos widgets na área direita
         splitter.setChildrenCollapsible(False)
         splitter.addWidget(left_panel)
         splitter.addWidget(self.intro_panel)
+        # chamar setCollapsible somente depois de adicionar os widgets para evitar
+        # "QSplitter::setCollapsible: Index 0 out of range" quando não há children ainda.
+        try:
+            splitter.setCollapsible(0, False)
+        except Exception:
+            # se por algum motivo o índice não existir, seguir sem falhar
+            pass
         splitter.setSizes([150, 800])
 
         central = QWidget()
@@ -92,12 +98,15 @@ class MainWindow(QMainWindow):
         info = QTextEdit()
         info.setReadOnly(True)
         # use ASCII-only text to avoid source encoding issues
-        info.setPlainText('O GF Editor e uma aplicacao desktop desenvolvida para facilitar as edicoes do meu servidor Grand Fantasia Arkadia e ela esta voltada principalmente a <b>Versao 751</b>, projetada para fornecer uma interface moderna, modular e extensivel para edicao, traducao e analise dos arquivos internos do jogo Grand Fantasia. Criado com foco em eficiencia, seguranca e expansibilidade, o GF Editor permite que desenvolvedores, tradutores e administradores de servidores compreendam e modifiquem o conteudo do jogo de forma estruturada — desde dados de itens e habilidades ate configuracoes avancadas de cliente e servidor. '
-        
-        'Este projeto so foi possivel gracas a contribuicao extraordinaria do Mystics e do TokyoSU, que disponibilizaram a documentacao deles com profundidade dos arquivos e estruturas internas dos inis do Grand Fantasia, tornando viavel o desenvolvimento de ferramentas avancadas de edicao. '
-        'Agradecimentos tambem a Nikoowr e Kleyton, pelo apoio, feedback e colaboracao continua na evolucao do ecossistema de ferramentas.')
-
+        paragraphs = [
+            'O GF Editor e uma aplicacao desktop desenvolvida para facilitar as edicoes do meu servidor Grand Fantasia Arkadia e ela esta voltada principalmente a Versao 751, projetada para fornecer uma interface moderna, modular e extensivel para edicao, traducao e analise dos arquivos internos do jogo Grand Fantasia. Criado com foco em eficiencia, seguranca e expansibilidad e, o GF Editor permite que desenvolvedores, tradutores e administradores de servidores compreendam e modifiquem o conteudo do jogo de forma estruturada - desde dados de itens e habilidades ate configuracoes avancadas de cliente e servidor.',
+            'Este projeto so foi possivel gracas a contribuicao extraordinaria do Mystics e do TokyoSU, que disponibilizaram a documentacao deles com profundidade dos arquivos e estruturas internas dos inis do Grand Fantasia, tornando viavel o desenvolvimento de ferramentas avancadas de edicao.',
+            'Agradecimentos tambem a Nikoowr e Kleyton, pelo apoio, feedback e colaboracao continua na evolucao do ecossistema de ferramentas.'
+        ]
+        info.setPlainText("\n\n".join(paragraphs))
         layout.addWidget(info)
+        # aplicar o layout ao widget para que os widgets adicionados sejam exibidos
+        w.setLayout(layout)
         return w
 
     def _find_splitter(self) -> Optional[QSplitter]:
