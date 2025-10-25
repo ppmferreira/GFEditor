@@ -58,9 +58,9 @@ class MainWindow(QMainWindow):
         # usar apenas a lista (Home está dentro dela)
         left_layout.addWidget(self.module_list)
         left_layout.addStretch()
-    left_panel.setLayout(left_layout)
+        left_panel.setLayout(left_layout)
     # fixar a largura do painel esquerdo para que não redimensione ao trocar módulos
-    left_panel.setFixedWidth(150)
+        left_panel.setFixedWidth(150)
 
         self.table = QTableWidget()
         self.intro_panel = self.create_intro_panel()
@@ -71,10 +71,10 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    splitter = QSplitter()
+        splitter = QSplitter()
     # evitar que o painel esquerdo colapse/resize quando inserimos widgets na área direita
-    splitter.setCollapsible(0, False)
-    splitter.setChildrenCollapsible(False)
+        splitter.setCollapsible(0, False)
+        splitter.setChildrenCollapsible(False)
         splitter.addWidget(left_panel)
         splitter.addWidget(self.intro_panel)
         splitter.setSizes([150, 800])
@@ -88,21 +88,16 @@ class MainWindow(QMainWindow):
     def create_intro_panel(self) -> QWidget:
         w = QWidget()
         layout = QVBoxLayout()
-        layout.addWidget(QLabel('<h2>Bem-vindo ao GF Editor</h2>'))
+        layout.addWidget(QLabel('<h2>Bem-vindo ao GF Editor - Developed By Fuleco</h2>'))
         info = QTextEdit()
         info.setReadOnly(True)
         # use ASCII-only text to avoid source encoding issues
-        info.setPlainText('Use o painel a esquerda para escolher um modulo ou abrir um arquivo C_/S_.')
+        info.setPlainText('O GF Editor e uma aplicacao desktop desenvolvida para facilitar as edicoes do meu servidor Grand Fantasia Arkadia e ela esta voltada principalmente a <b>Versao 751</b>, projetada para fornecer uma interface moderna, modular e extensivel para edicao, traducao e analise dos arquivos internos do jogo Grand Fantasia. Criado com foco em eficiencia, seguranca e expansibilidade, o GF Editor permite que desenvolvedores, tradutores e administradores de servidores compreendam e modifiquem o conteudo do jogo de forma estruturada — desde dados de itens e habilidades ate configuracoes avancadas de cliente e servidor. '
+        
+        'Este projeto so foi possivel gracas a contribuicao extraordinaria do Mystics e do TokyoSU, que disponibilizaram a documentacao deles com profundidade dos arquivos e estruturas internas dos inis do Grand Fantasia, tornando viavel o desenvolvimento de ferramentas avancadas de edicao. '
+        'Agradecimentos tambem a Nikoowr e Kleyton, pelo apoio, feedback e colaboracao continua na evolucao do ecossistema de ferramentas.')
+
         layout.addWidget(info)
-        btn_open = QPushButton('Open')
-        btn_open.clicked.connect(self.open_file)
-        row = QHBoxLayout()
-        row.addStretch()
-        row.addWidget(btn_open)
-        row.addStretch()
-        layout.addLayout(row)
-        layout.addStretch()
-        w.setLayout(layout)
         return w
 
     def _find_splitter(self) -> Optional[QSplitter]:
