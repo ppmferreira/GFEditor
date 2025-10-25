@@ -1,5 +1,17 @@
 /* ????????????????????????????????????????????????????????????????????????????? */
 
+/* ITEM PANEL (Professional Editor) - shared rules previously inline in module
+    Moved here so Item and ItemMall editors share exact same visual styling. */
+QWidget#item_panel { background-color: #0f1113; color: #e6eef6; }
+QWidget#item_panel QTabWidget::pane { border: 1px solid #2b2f33; }
+QWidget#item_panel QTabBar::tab { background: #15181a; padding: 6px; margin: 1px; border-radius: 4px; }
+QWidget#item_panel QTabBar::tab:selected { background: #1e90ff; color: #ffffff; }
+QWidget#item_panel QPushButton { background: #173043; border: 1px solid #2b6a88; padding: 6px 10px; border-radius: 6px; color: #dceffb; }
+QWidget#item_panel QPushButton:hover { background: #1e4960; }
+QWidget#item_panel QLineEdit, QWidget#item_panel QTextEdit, QWidget#item_panel QSpinBox, QWidget#item_panel QComboBox { background: #0f1417; color: #e6eef6; border: 1px solid #2b2f33; }
+QWidget#item_panel QLabel { color: #b9d0de; }
+
+
 /* Compact styles for Translate tab to reduce vertical spacing */
 #translateTab {
     padding: 4px;

@@ -16,7 +16,10 @@ class TranslateFile:
         self.records = []
         if not self.path.exists():
             return
-        with open(self.path, 'r', encoding='utf-8', errors='ignore') as fh:
+        import os
+        # Use ANSI (mbcs) on Windows to match project requirement; fallback to utf-8 on other OSes
+        enc = 'mbcs' if os.name == 'nt' else 'utf-8'
+        with open(self.path, 'r', encoding=enc, errors='ignore') as fh:
             current_id = None
             current_name = ''
             current_desc_lines: List[str] = []
@@ -37,14 +40,17 @@ class TranslateFile:
                     if len(desc_parts) == 0 or all(p == '' for p in desc_parts):
                         desc_part = ''
                     else:
-                        desc_part = '|'.join(desc_parts)
+                        # join parts but strip trailing '|' characters that mark end-of-record
+                        desc_part = '|'.join(desc_parts).rstrip('|')
                     current_desc_lines = [desc_part] if desc_part != '' else []
                 else:
                     if not seen:
                         self.header_lines.append(line)
                     else:
                         if current_id is not None:
-                            current_desc_lines.append(line)
+                            # strip trailing pipe characters from continuation lines to avoid
+                            # preserving format markers as content (prevents double '||' on save)
+                            current_desc_lines.append(line.rstrip('|'))
                         else:
                             self.header_lines.append(line)
             if current_id is not None:
@@ -53,7 +59,33 @@ class TranslateFile:
     def get(self, item_id: str) -> Optional[Tuple[str, str]]:
         for rec in self.records:
             if rec['id'] == str(item_id):
-                return rec['name'], '\n'.join(rec['desc_lines']).strip()
+                name = rec['name'] or ''
+                desc = '\n'.join(rec['desc_lines']).strip()
+                # sanitize both name and description for display:
+                # - remove tokens like $12$ used in some translation dumps
+                # - remove trailing pipe characters left by some file formats
+                # - strip surrounding quotes on each line
+                def _sanitize(text: str) -> str:
+                    if not text:
+                        return ''
+                    t = text.strip()
+                    # remove $number$ markers
+                    t = re.sub(r"\$\d+\$", '', t)
+                    # collapse any pipe that is used as end-of-line marker: '|\n' -> '\n'
+                    t = t.replace('|\n', '\n')
+                    # remove trailing pipes
+                    while t.endswith('|'):
+                        t = t[:-1].rstrip()
+                    # strip surrounding quotes on each line
+                    lines = [ln.strip() for ln in t.split('\n')]
+                    def _strip_quotes(ln: str) -> str:
+                        if len(ln) >= 2 and ((ln.startswith('"') and ln.endswith('"')) or (ln.startswith("'") and ln.endswith("'"))):
+                            return ln[1:-1]
+                        return ln
+                    lines = [_strip_quotes(ln) for ln in lines]
+                    return '\n'.join(lines).strip()
+
+                return _sanitize(name), _sanitize(desc)
         return None
 
     def find_index(self, item_id: str) -> Optional[int]:
@@ -81,7 +113,10 @@ class TranslateFile:
     def save(self):
         tmp_fd, tmp_path = tempfile.mkstemp(prefix='translate_', suffix='.tmp', dir=str(self.path.parent))
         try:
-            with io.open(tmp_fd, 'w', encoding='utf-8', errors='replace') as fh:
+            # use os.fdopen to correctly wrap the fd returned by mkstemp
+            import os
+            enc = 'mbcs' if os.name == 'nt' else 'utf-8'
+            with os.fdopen(tmp_fd, 'w', encoding=enc, errors='replace') as fh:
                 for hl in self.header_lines:
                     fh.write(hl + '\n')
                 for rec in self.records:
@@ -92,11 +127,22 @@ class TranslateFile:
                     if not desc_lines or (len(desc_lines) == 1 and desc_lines[0].strip() == ''):
                         fh.write(f"{id_}|{name}||\n")
                     else:
+                        # Preserve multiple lines so the last line ends with '|' and
+                        # intermediate lines are written as-is (allow blank lines).
+                        # If there's only one line, write it as id|name|line|
                         first = desc_lines[0]
-                        # sempre terminar a primeira linha com pipe final
-                        fh.write(f"{id_}|{name}|{first}|\n")
-                        for extra in desc_lines[1:]:
-                            fh.write(extra + '\n')
+                        if len(desc_lines) == 1:
+                            fh.write(f"{id_}|{name}|{first}|\n")
+                        else:
+                            # first line: no trailing pipe
+                            fh.write(f"{id_}|{name}|{first}\n")
+                            # middle lines (could be empty) - preserve exact text
+                            for mid in desc_lines[1:-1]:
+                                fh.write(mid + "\n")
+                            # last line: terminate with '|' to mark end of record
+                            last = desc_lines[-1]
+                            fh.write(f"{last}|\n")
+            # mover arquivo temporário para destino (substitui o arquivo existente)
             shutil.move(tmp_path, str(self.path))
         finally:
             try:
@@ -211,9 +257,12 @@ def create_tab_translate(rows, header, state):
             def do_save():
                 name = in_name.text()
                 desc = in_desc.toPlainText()
+                # If translation does not exist, append as the last record (insert_at=None)
+                # so new translations are always created at the end of the file.
                 insert_at = None
-                if tf.find_index(item_id) is None:
-                    insert_at = state.get('index', None)
+                if tf.find_index(item_id) is not None:
+                    # existing record - retain position
+                    insert_at = tf.find_index(item_id)
                 tf.set(item_id, name, desc, insert_at=insert_at)
                 try:
                     tf.save()

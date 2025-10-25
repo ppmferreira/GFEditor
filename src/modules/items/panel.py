@@ -124,19 +124,9 @@ def build_professional_editor(parent, rows, header, source_base=None):
         # if import fails, leave header as-is
         pass
     # name the widget so the stylesheet targets only this editor panel
+    # keep objectName so global qss (src/style/style.qss) can target it
     container.setObjectName('item_panel')
     main_layout = QVBoxLayout()
-    # local stylesheet to improve the panel appearance (dark, high-contrast)
-    container.setStyleSheet(r"""
-    QWidget#item_panel { background-color: #0f1113; color: #e6eef6; }
-    QTabWidget::pane { border: 1px solid #2b2f33; }
-    QTabBar::tab { background: #15181a; padding: 6px; margin: 1px; border-radius: 4px; }
-    QTabBar::tab:selected { background: #1e90ff; color: #ffffff; }
-    QPushButton { background: #173043; border: 1px solid #2b6a88; padding: 6px 10px; border-radius: 6px; color: #dceffb; }
-    QPushButton:hover { background: #1e4960; }
-    QLineEdit, QTextEdit, QSpinBox, QComboBox { background: #0f1417; color: #e6eef6; border: 1px solid #2b2f33; }
-    QLabel { color: #b9d0de; }
-    """)
 
     # keep a reference to parent so sub-widgets can access app paths/settings
     state = {'rows': rows, 'header': header, 'index': 0, 'parent': parent, 'source_base': source_base}
@@ -458,7 +448,24 @@ def update_tab_basic(tab, row, header, state):
             elif isinstance(widget, QTextEdit):
                 widget.setPlainText(val)
             else:
-                widget.setText(val)
+                # If Name is empty, try Translate files as fallback (T_Item or T_ItemMall)
+                if key == 'Name' and (val is None or str(val).strip() == ''):
+                    try:
+                        src = state.get('source_base') or ''
+                        translate_name = 'T_Item.ini'
+                        s = str(src).lower()
+                        if 'itemmall' in s or 'item_mall' in s:
+                            translate_name = 'T_ItemMall.ini'
+                        lib_base = Path(getattr(state.get('parent'), 'lib_path', Path.cwd() / 'Assets'))
+                        tr = item_translate.get_translation(translate_name, row[0] if len(row) > 0 else '', lib_base=lib_base)
+                        if tr and tr[0]:
+                            widget.setText(tr[0])
+                        else:
+                            widget.setText(val)
+                    except Exception:
+                        widget.setText(val)
+                else:
+                    widget.setText(val)
         except:
             pass
         
